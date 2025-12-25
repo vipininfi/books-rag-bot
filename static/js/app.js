@@ -267,8 +267,15 @@ class BookRAGApp {
         const formData = new FormData(e.target);
         const query = formData.get('query');
         
+        // Start timing
+        const searchStartTime = performance.now();
+        console.log(`🔍 FRONTEND SEARCH START: "${query}"`);
+        
         try {
             this.showLoading('Searching...');
+            
+            // Time the API call
+            const apiStartTime = performance.now();
             const response = await this.apiCall('/search/semantic', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -276,9 +283,33 @@ class BookRAGApp {
                     limit: 10
                 })
             });
-
+            const apiEndTime = performance.now();
+            const apiTime = apiEndTime - apiStartTime;
+            
+            console.log(`🌐 API Call Time: ${apiTime.toFixed(1)}ms`);
+            
+            // Time the result display
+            const displayStartTime = performance.now();
             this.displaySearchResults(response.results, query);
+            const displayEndTime = performance.now();
+            const displayTime = displayEndTime - displayStartTime;
+            
+            console.log(`🎨 Display Time: ${displayTime.toFixed(1)}ms`);
+            
+            // Calculate total time
+            const totalTime = performance.now() - searchStartTime;
+            console.log(`✅ FRONTEND SEARCH COMPLETE: ${totalTime.toFixed(1)}ms total`);
+            console.log(`   - API: ${apiTime.toFixed(1)}ms (${((apiTime/totalTime)*100).toFixed(1)}%)`);
+            console.log(`   - Display: ${displayTime.toFixed(1)}ms (${((displayTime/totalTime)*100).toFixed(1)}%)`);
+            
+            // Show performance info to user if search is slow
+            if (totalTime > 3000) {
+                console.warn(`⚠️ Slow search detected: ${totalTime.toFixed(1)}ms`);
+            }
+            
         } catch (error) {
+            const errorTime = performance.now() - searchStartTime;
+            console.error(`❌ SEARCH ERROR after ${errorTime.toFixed(1)}ms:`, error.message);
             this.showAlert(error.message, 'error');
         } finally {
             this.hideLoading();
@@ -286,6 +317,290 @@ class BookRAGApp {
     }
 
     async handleRAG(e) {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const query = formData.get('ragQuery');
+        
+        try {
+            // Use streaming endpoint for faster response
+            await this.handleRAGQueryStream(query);
+            
+        } catch (error) {
+            this.showAlert(error.message, 'error');
+        }
+        // Don't hide loading here - let streaming handle it
+    }
+
+    async handleRAGQueryStream(query) {
+        const container = document.getElementById('ragResults');
+        
+        // Show initial loading
+        this.showLoading('Finding relevant sources...');
+        
+        // Clear previous results and show loading state
+        container.innerHTML = `
+            <div class="rag-container">
+                <h3>Answer for: "${query}"</h3>
+                <div class="answer-section">
+                    <h4><i class="fas fa-robot"></i> AI Answer</h4>
+                    <div id="answer-container" class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Searching for relevant content...
+                    </div>
+                </div>
+                <div class="sources-section">
+                    <h4><i class="fas fa-book"></i> Sources</h4>
+                    <div id="sources-container" class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Preparing sources...
+                    </div>
+                </div>
+            </div>
+        `;
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/v1/search/rag-stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    query: query,
+                    max_chunks: 8
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let answerText = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    console.log('🚀 Stream reading complete');
+                    break;
+                }
+
+                const chunk = decoder.decode(value);
+                console.log('🚀 Received chunk:', chunk.substring(0, 100) + '...');
+                
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.slice(6);
+                            if (jsonStr.trim()) {
+                                const data = JSON.parse(jsonStr);
+                                console.log('🚀 Parsed data:', data.type, data);
+                                
+                                if (data.type === 'sources') {
+                                    console.log('🚀 Displaying sources:', data.sources.length);
+                                    // Hide fullscreen loader once sources arrive
+                                    this.hideLoading();
+                                    this.displayStreamingSources(data.sources);
+                                } else if (data.type === 'answer_chunk') {
+                                    console.log('🚀 Adding answer chunk:', data.content);
+                                    answerText += data.content;
+                                    this.updateStreamingAnswer(answerText);
+                                } else if (data.type === 'complete') {
+                                    console.log(`✅ RAG Stream Complete: ${data.total_time.toFixed(3)}s`);
+                                    this.finalizeStreamingAnswer();
+                                } else if (data.type === 'error') {
+                                    throw new Error(data.message);
+                                }
+                            }
+                        } catch (parseError) {
+                            console.warn('Failed to parse streaming data:', parseError, 'Line:', line);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Streaming error:', error);
+            this.hideLoading();
+            container.innerHTML = `
+                <div class="alert alert-error">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Error</h4>
+                    <p>Failed to generate answer: ${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    displayStreamingSources(sources) {
+        const sourcesContainer = document.getElementById('sources-container');
+        
+        if (!sources || sources.length === 0) {
+            sourcesContainer.innerHTML = '<p>No sources found.</p>';
+            return;
+        }
+
+        sourcesContainer.innerHTML = sources.map((source, index) => `
+            <div class="source-item clickable-source" 
+                 data-book-id="${source.book_id}" 
+                 data-section-title="${source.section_title.replace(/"/g, '&quot;')}" 
+                 data-page-number="${source.page_number}" 
+                 data-text="${encodeURIComponent(source.text)}"
+                 style="cursor: pointer;">
+                <div class="source-header">
+                    <span class="source-number">${index + 1}</span>
+                    <span class="source-title">${source.section_title}</span>
+                    <span class="source-page">Page ${source.page_number}</span>
+                    <span class="source-score">${(source.score * 100).toFixed(1)}%</span>
+                </div>
+                <div class="source-text">${this.truncateToFirstSentence(source.text)}</div>
+                <div class="source-actions">
+                    <i class="fas fa-external-link-alt"></i> Click to view in PDF
+                </div>
+            </div>
+        `).join('');
+
+        // Add click handlers to make sources clickable
+        const clickableSources = sourcesContainer.querySelectorAll('.clickable-source');
+        console.log(`🔍 Adding click handlers to ${clickableSources.length} sources`);
+        
+        clickableSources.forEach((sourceElement, index) => {
+            console.log(`🔍 Adding click handler to source ${index + 1}:`, sourceElement.dataset);
+            
+            sourceElement.addEventListener('click', (e) => {
+                console.log(`🔍 Source ${index + 1} clicked!`);
+                this.handleStreamingSourceClick(e, sourceElement);
+            });
+            
+            // Also add visual feedback
+            sourceElement.style.cursor = 'pointer';
+        });
+
+        // Enable answer section
+        const answerContainer = document.getElementById('answer-container');
+        answerContainer.innerHTML = '<div id="streaming-answer">Generating answer...</div>';
+        answerContainer.classList.remove('loading');
+        
+        console.log('🚀 Sources displayed, answer section ready for streaming');
+    }
+
+    handleStreamingSourceClick(e, sourceElement) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        try {
+            console.log('🔍 Streaming source clicked - element:', sourceElement);
+            console.log('🔍 Dataset:', sourceElement.dataset);
+            
+            // Extract data from the clicked source
+            const bookId = parseInt(sourceElement.dataset.bookId);
+            const sectionTitle = sourceElement.dataset.sectionTitle;
+            const pageNumber = parseInt(sourceElement.dataset.pageNumber);
+            const encodedText = sourceElement.dataset.text;
+            
+            console.log('🔍 Extracted data:');
+            console.log('  Book ID:', bookId, typeof bookId);
+            console.log('  Section:', sectionTitle, typeof sectionTitle);
+            console.log('  Page:', pageNumber, typeof pageNumber);
+            console.log('  Text length:', encodedText ? encodedText.length : 0);
+            
+            // Validate required data
+            if (!bookId || !sectionTitle) {
+                throw new Error('Missing required data: bookId or sectionTitle');
+            }
+            
+            // Decode the text for highlighting
+            const textToHighlight = encodedText ? decodeURIComponent(encodedText) : '';
+            console.log('🔍 Text to highlight preview:', textToHighlight.substring(0, 100));
+            
+            // Check if openPdfViewer function exists
+            if (typeof window.openPdfViewer !== 'function') {
+                throw new Error('openPdfViewer function not found');
+            }
+            
+            // Call the same PDF viewer function as regular search results
+            console.log('🔍 Calling openPdfViewer...');
+            window.openPdfViewer(bookId, sectionTitle, pageNumber, textToHighlight);
+            
+        } catch (error) {
+            console.error('❌ Error in handleStreamingSourceClick:', error);
+            console.error('❌ Error stack:', error.stack);
+            this.showAlert(`Failed to open PDF viewer: ${error.message}`, 'error');
+        }
+    }
+
+    updateStreamingAnswer(text) {
+        const answerDiv = document.getElementById('streaming-answer');
+        if (answerDiv) {
+            console.log('🚀 Updating streaming answer, length:', text.length);
+            
+            // Convert markdown-like formatting to HTML
+            const formattedText = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>');
+            
+            answerDiv.innerHTML = `<p>${formattedText}</p>`;
+            
+            // Auto-scroll to bottom
+            answerDiv.scrollTop = answerDiv.scrollHeight;
+            
+            // Add typing cursor effect
+            if (!answerDiv.classList.contains('streaming')) {
+                answerDiv.classList.add('streaming');
+                console.log('🚀 Added streaming class to answer div');
+            }
+        }
+    }
+
+    finalizeStreamingAnswer() {
+        const answerContainer = document.getElementById('answer-container');
+        const answerDiv = document.getElementById('streaming-answer');
+        
+        if (answerContainer) {
+            answerContainer.classList.add('complete');
+        }
+        
+        if (answerDiv) {
+            answerDiv.classList.remove('streaming');
+            answerDiv.classList.add('complete');
+        }
+    }
+
+    truncateToFirstSentence(text, maxLength = 150) {
+        if (!text) return '';
+        
+        // Find the first sentence ending
+        const sentenceEnders = /[.!?]/;
+        const match = text.match(sentenceEnders);
+        
+        if (match) {
+            const firstSentenceEnd = match.index + 1;
+            const firstSentence = text.substring(0, firstSentenceEnd).trim();
+            
+            // If first sentence is reasonable length, use it
+            if (firstSentence.length <= maxLength) {
+                return firstSentence + '...';
+            }
+        }
+        
+        // Fallback: truncate at word boundary near maxLength
+        if (text.length <= maxLength) {
+            return text;
+        }
+        
+        const truncated = text.substring(0, maxLength);
+        const lastSpace = truncated.lastIndexOf(' ');
+        
+        if (lastSpace > maxLength * 0.7) { // If we can find a good word boundary
+            return truncated.substring(0, lastSpace) + '...';
+        }
+        
+        return truncated + '...';
+    }
+
+    // Keep the old method as fallback
+    async handleRAGOld(e) {
         e.preventDefault();
         const formData = new FormData(e.target);
         const query = formData.get('ragQuery');
@@ -353,7 +668,7 @@ class BookRAGApp {
                             <strong>${result.book_title}</strong> by ${result.author_name}
                         </div>
                     </div>
-                    <div class="result-text">${result.text}</div>
+                    <div class="result-text">${this.truncateToFirstSentence(result.text)}</div>
                     <div class="result-meta">
                         <strong>Section:</strong> ${result.section_title} | 
                         <strong>Page:</strong> ${result.page_number} |
@@ -471,7 +786,7 @@ class BookRAGApp {
                                     </div>
                                     ${source.text ? `
                                         <div class="source-preview">
-                                            "${source.text.substring(0, 150)}${source.text.length > 150 ? '...' : ''}"
+                                            "${this.truncateToFirstSentence(source.text)}"
                                         </div>
                                     ` : ''}
                                     <div class="source-meta">

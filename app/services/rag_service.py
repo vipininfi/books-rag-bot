@@ -1,24 +1,33 @@
-import google.generativeai as genai
+from openai import OpenAI
 from typing import List, Dict, Any, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
+import time
+import hashlib
+import json
+from functools import lru_cache
 
 from app.core.config import settings
 from app.services.vector_store import VectorStore
 from app.services.embedding_service import EmbeddingService
+from app.services.text_retrieval import text_retrieval_service
+from app.services.query_router import query_router, QueryType
+from app.core.performance import performance_metrics
+from app.core.cache import persistent_cache
 
 
 class RAGService:
-    """Handles Retrieval-Augmented Generation using Gemini 2.0 Flash."""
+    """Handles Retrieval-Augmented Generation with intelligent query routing."""
     
     def __init__(self):
-        # Configure Gemini
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model_name = "gemini-2.5-flash"  # Exact model as requested
-        self.model = genai.GenerativeModel(self.model_name)
+        # Configure OpenAI
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.model_name = settings.LLM_MODEL_NAME
         
         # Initialize services
         self.vector_store = VectorStore()
         self.embedding_service = EmbeddingService()
+        
+        print(f"Initialized OPTIMIZED RAG service with query routing and parallel search")
     
     def search_only(
         self, 
@@ -26,18 +35,59 @@ class RAGService:
         author_ids: List[int], 
         limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """Perform semantic search without RAG generation."""
-        # Generate query embedding using BGE
-        query_embedding = self.embedding_service.embed_query(query)
+        """CRITICAL OPTIMIZATION: Route queries intelligently to avoid unnecessary vector search."""
         
-        # Search vector store
-        results = self.vector_store.search(
+        search_start = time.time()
+        print(f"🧠 INTELLIGENT Search: '{query}' for {len(author_ids)} authors")
+        
+        # CRITICAL FIX #2: Query intent routing
+        routing_decision = query_router.get_routing_decision(query)
+        print(f"🎯 Query routing: {routing_decision['query_type']} (confidence: {routing_decision['confidence']:.2f})")
+        
+        # Check cache for vector search results
+        cached_results = persistent_cache.get_search_results(query, author_ids, limit)
+        if cached_results is not None:
+            total_time = time.time() - search_start
+            print(f"⚡ SEARCH RESULTS CACHED: {total_time:.3f}s - Found {len(cached_results)} results")
+            performance_metrics.record("search_total", total_time)
+            return cached_results
+        
+        # Step 1: Generate query embedding (with caching)
+        embed_start = time.time()
+        query_embedding = self.embedding_service.embed_query(query)
+        embed_time = time.time() - embed_start
+        
+        # Step 2: PARALLEL vector search with lower threshold for better recall
+        vector_start = time.time()
+        vector_results = self.vector_store.search(
             query_vector=query_embedding,
             author_ids=author_ids,
-            limit=limit
+            limit=limit * 2,  # Get more results for better reranking
+            score_threshold=0.3  # Lower threshold to get more potential matches
         )
+        vector_time = time.time() - vector_start
         
-        return results
+        # Step 3: Fetch text from database (no text in Pinecone metadata)
+        text_start = time.time()
+        enriched_results = text_retrieval_service.fetch_texts_for_results(vector_results)
+        text_time = time.time() - text_start
+        
+        # Cache the final results
+        persistent_cache.cache_search_results(query, author_ids, limit, enriched_results)
+        
+        total_time = time.time() - search_start
+        print(f"✅ OPTIMIZED Search Complete: {total_time:.3f}s")
+        print(f"   - Embedding: {embed_time:.3f}s ({(embed_time/total_time)*100:.1f}%)")
+        print(f"   - Vector Search: {vector_time:.3f}s ({(vector_time/total_time)*100:.1f}%)")
+        print(f"   - Text Retrieval: {text_time:.3f}s ({(text_time/total_time)*100:.1f}%)")
+        
+        # Record performance metrics
+        performance_metrics.record("search_total", total_time)
+        performance_metrics.record("embedding", embed_time)
+        performance_metrics.record("vector_search", vector_time)
+        performance_metrics.record("text_retrieval", text_time)
+        
+        return enriched_results
     
     @retry(
         stop=stop_after_attempt(3),
@@ -47,26 +97,16 @@ class RAGService:
         self, 
         query: str, 
         author_ids: List[int], 
-        max_chunks: int = 8
+        max_chunks: int = 5
     ) -> Dict[str, Any]:
-        """Generate RAG answer using Gemini 2.0 Flash with retrieved context."""
-        # Check if user has any subscribed authors
-        if not author_ids:
-            return {
-                "answer": "You haven't subscribed to any authors yet. Please subscribe to authors in the Authors tab to get access to their books and ask questions about their content.",
-                "sources": [],
-                "total_chunks": 0,
-                "query": query,
-                "llm_model": self.model_name
-            }
-        
+        """Generate RAG answer using OpenAI GPT-4o mini with retrieved context."""
         # Get more chunks initially for better context
         search_limit = max(max_chunks * 2, 16)  # Get more chunks to choose from
         search_results = self.search_only(query, author_ids, limit=search_limit)
         
         if not search_results:
             return {
-                "answer": f"I couldn't find any relevant information about '{query}' in the books from your subscribed authors. This could mean:\n\n• The topic isn't covered in the available books\n• Try using different keywords or phrases\n• The content might be in books you haven't subscribed to yet\n\nYou can check the Authors tab to see all available authors and their books.",
+                "answer": "No relevant information found in your subscribed authors' books.",
                 "sources": [],
                 "total_chunks": 0,
                 "query": query,
@@ -105,26 +145,25 @@ class RAGService:
         
         context = "\n\n".join(context_chunks)
         
-        # Generate answer using Gemini with improved settings
-        prompt = self._build_rag_prompt(query, context)
+        # Generate answer using OpenAI GPT-4o mini
+        messages = self._build_rag_messages(query, context)
         
         try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.3,  # Slightly higher for more creative synthesis
-                    max_output_tokens=1500,  # More space for comprehensive answers
-                    top_p=0.9,
-                    top_k=40
-                )
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=1500,
+                top_p=0.9,
+                frequency_penalty=0.0,
+                presence_penalty=0.0
             )
             
-            answer = response.text
+            answer = response.choices[0].message.content
             
         except Exception as e:
-            print(f"Error generating answer with Gemini: {str(e)}")
-            # Provide a fallback answer with the available context
-            answer = f"I found relevant information about '{query}' but encountered an issue generating a complete response. Here's what I found in the sources below. Please try asking your question again or rephrase it for better results."
+            print(f"Error generating answer with OpenAI: {str(e)}")
+            answer = "I apologize, but I encountered an error while generating the answer. Please try again."
         
         return {
             "answer": answer,
@@ -134,54 +173,49 @@ class RAGService:
             "llm_model": self.model_name
         }
     
-    def _build_rag_prompt(self, query: str, context: str) -> str:
-        """Build the RAG prompt for Gemini."""
-        return f"""You are a knowledgeable assistant that helps users understand and apply insights from books. Your task is to answer questions using the provided context from the user's subscribed books.
+    def _build_rag_messages(self, query: str, context: str) -> List[Dict[str, str]]:
+        """Build the messages for OpenAI chat completion."""
+        system_prompt = """You are a book expert assistant that answers questions using ONLY the provided text excerpts from books. Your job is to find the specific answer in the given context and quote directly from it.
 
-INSTRUCTIONS:
-1. **Primary Goal**: Provide helpful, actionable answers based on the context provided
-2. **Use the Context**: Extract insights, concepts, and guidance from the provided text
-3. **Synthesize Information**: Combine related ideas from different parts of the context to create comprehensive answers
-4. **Be Practical**: Focus on actionable advice and clear explanations
-5. **Stay Grounded**: Base your answer on the provided context, but feel free to connect ideas and draw reasonable conclusions
-6. **Acknowledge Limitations**: If the context only partially addresses the question, mention what is covered and what might need additional information
+CRITICAL RULES:
+1. **ONLY use information from the provided context** - Do not add general knowledge or assumptions
+2. **Quote directly from the text** when possible to support your answer
+3. **If the answer is in the context, find it and explain it clearly**
+4. **If the answer is NOT in the context, say so explicitly** - don't make up generic answers
+5. **Reference specific sections** when you find relevant information
 
-CRITICAL FORMATTING REQUIREMENTS:
-- Use **bold text** for key concepts and section headings (surround with **)
-- Use numbered lists (1., 2., 3.) for step-by-step instructions - each step should be on a new line
-- Use bullet points (•) for related items or examples
-- Add proper spacing: Always put a space after periods, colons, and other punctuation
-- Break content into clear paragraphs with double line breaks between major sections
-- Start each numbered step with the number, period, space, then a clear heading
-- Ensure proper sentence spacing throughout
+ANSWER FORMAT:
+- Start with a direct answer if found in the context
+- Quote the relevant text passages
+- Explain what the text means in relation to the question
+- Use **bold** for key points and section headings
+- If no specific answer is found, clearly state: "The provided text does not contain information about [topic]"
 
-EXAMPLE FORMAT:
-**Main Heading**
+EXAMPLE GOOD ANSWER:
+**Direct Answer from the Text**
 
-Introductory paragraph with proper spacing. Each sentence should flow naturally with correct punctuation spacing.
+According to the book, [specific answer based on context].
 
-1. **First Step Title**
-Clear explanation of the first step. Make sure there are spaces after periods and proper formatting.
+The text states: "[exact quote from context]"
 
-2. **Second Step Title** 
-Detailed explanation with examples:
-• First example point
-• Second example point
-• Third example point
+This means [explanation of what the quote reveals about the question].
 
-**Next Section Heading**
+EXAMPLE BAD ANSWER:
+- Making general assumptions not in the text
+- Saying "we can infer" when the text has the actual answer
+- Giving generic advice instead of book-specific content"""
 
-Additional information and guidance with proper paragraph breaks.
-
-CONTEXT FROM BOOKS:
+        user_prompt = f"""BOOK CONTEXT:
 {context}
 
-USER QUESTION: {query}
+QUESTION: {query}
 
-Please provide a well-formatted, comprehensive answer that draws from the available context. Pay special attention to proper spacing, punctuation, and formatting to ensure excellent readability."""
-    
-    
-    
+Please answer this question using ONLY the information provided in the book context above. Quote directly from the text and explain what it reveals about the question. If the specific answer is not in the provided context, clearly state that."""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
     
     def rerank_results(
         self, 
@@ -236,6 +270,47 @@ Please provide a well-formatted, comprehensive answer that draws from the availa
         results.sort(key=lambda x: x["composite_score"], reverse=True)
         
         return results[:top_k]
+    
+    def generate_streaming_answer(
+        self, 
+        query: str, 
+        reranked_results: List[Dict[str, Any]]
+    ):
+        """Generate streaming RAG answer using OpenAI GPT-4o mini."""
+        
+        if not reranked_results:
+            yield "No relevant information found in your subscribed authors' books."
+            return
+        
+        # Prepare context
+        context_chunks = []
+        for result in reranked_results:
+            section_header = f"--- Section: {result['section_title']} ---"
+            context_chunks.append(f"{section_header}\n{result['text']}")
+        
+        context = "\n\n".join(context_chunks)
+        messages = self._build_rag_messages(query, context)
+        
+        try:
+            # Stream response from OpenAI
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=1500,
+                top_p=0.9,
+                frequency_penalty=0.0,
+                presence_penalty=0.0,
+                stream=True  # Enable streaming
+            )
+            
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                    
+        except Exception as e:
+            print(f"Error generating streaming answer: {str(e)}")
+            yield f"I apologize, but I encountered an error while generating the answer: {str(e)}"
     
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the models being used."""

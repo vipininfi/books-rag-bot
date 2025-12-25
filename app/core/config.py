@@ -6,17 +6,17 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://user:password@localhost:5432/bookrag"
     
-    # Gemini AI
-    GEMINI_API_KEY: str
+    # OpenAI API
+    OPENAI_API_KEY: str
     
-    # BGE Embeddings
-    EMBEDDING_MODEL_NAME: str = "BAAI/bge-base-en-v1.5"
-    EMBEDDING_DEVICE: str = "cpu"
+    # OpenAI Models
+    EMBEDDING_MODEL_NAME: str = "text-embedding-3-small"
+    LLM_MODEL_NAME: str = "gpt-4o-mini"
     
     # Pinecone
     PINECONE_API_KEY: str
     PINECONE_ENVIRONMENT: str = "us-east-1-aws"
-    PINECONE_INDEX_NAME: str = "book-chunks"
+    PINECONE_INDEX_NAME: str = "book-chunks-openai"
     
     # JWT
     SECRET_KEY: str

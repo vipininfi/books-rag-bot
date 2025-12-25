@@ -30,3 +30,4 @@ class Book(Base):
 
     # Relationships
     author = relationship("Author", back_populates="books")
+    chunks = relationship("Chunk", back_populates="book")

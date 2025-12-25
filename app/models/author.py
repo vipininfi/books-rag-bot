@@ -18,4 +18,5 @@ class Author(Base):
     # Relationships
     user = relationship("User")
     books = relationship("Book", back_populates="author")
+    chunks = relationship("Chunk", back_populates="author")
     subscriptions = relationship("Subscription", back_populates="author")

@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import uuid
 
 from app.core.config import settings
 from app.models.book import Book, ProcessingStatus
+from app.models.chunk import Chunk
 from app.services.pdf_processor import PDFProcessor
 from app.services.chunking_engine import ChunkingEngine
 from app.services.embedding_service import EmbeddingService
@@ -62,9 +64,13 @@ class BookProcessor:
             chunk_texts = [chunk.text for chunk in chunks]
             embeddings = self.embedding_service.embed_batch(chunk_texts)
             
-            # Step 5: Store in vector database
+            # Step 5: Store in vector database AND database
             print("Step 5: Storing in vector database...")
-            self.vector_store.store_chunks(chunks, embeddings)
+            chunk_ids = self.vector_store.store_chunks(chunks, embeddings)
+            
+            # Step 6: Store chunks in database for text retrieval
+            print("Step 6: Storing chunks in database...")
+            self._store_chunks_in_database(chunks, chunk_ids)
             
             # Update book record
             book.processing_status = ProcessingStatus.COMPLETED
@@ -88,10 +94,41 @@ class BookProcessor:
         finally:
             self.db.close()
     
+    def _store_chunks_in_database(self, chunks, chunk_ids):
+        """Store chunks in database for text retrieval using the same IDs as Pinecone."""
+        try:
+            for chunk, chunk_id in zip(chunks, chunk_ids):
+                # Create database chunk record with same ID as Pinecone
+                db_chunk = Chunk(
+                    chunk_id=chunk_id,  # Use same UUID as Pinecone
+                    text=chunk.text,  # Store full text
+                    section_title=chunk.metadata["section_title"],
+                    chunk_index=chunk.metadata["chunk_index"],
+                    chunk_type=chunk.chunk_type.value,
+                    token_count=chunk.token_count,
+                    page_number=chunk.metadata.get("page_number", 1),
+                    book_id=chunk.metadata["book_id"],
+                    author_id=chunk.metadata["author_id"]
+                )
+                
+                self.db.add(db_chunk)
+            
+            self.db.commit()
+            print(f"Stored {len(chunks)} chunks in database with matching Pinecone IDs")
+            
+        except Exception as e:
+            print(f"Error storing chunks in database: {e}")
+            self.db.rollback()
+            raise e
+    
     def reprocess_book(self, book_id: int):
         """Reprocess a book (useful for updates or fixes)."""
-        # Delete existing chunks
+        # Delete existing chunks from vector store
         self.vector_store.delete_book_chunks(book_id)
+        
+        # Delete existing chunks from database
+        self.db.query(Chunk).filter(Chunk.book_id == book_id).delete()
+        self.db.commit()
         
         # Process again
         self.process_book(book_id)

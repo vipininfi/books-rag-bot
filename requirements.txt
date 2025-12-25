@@ -18,11 +18,8 @@ pdfplumber==0.10.3
 # Vector Database
 pinecone-client==3.0.3
 
-# Embeddings & AI
-sentence-transformers==2.7.0
-torch==2.1.2
-transformers==4.40.0
-google-generativeai==0.8.3
+# OpenAI & AI
+openai==1.54.4
 tiktoken==0.5.2
 
 # Authentication & Security
