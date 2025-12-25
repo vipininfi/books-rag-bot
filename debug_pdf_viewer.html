@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug PDF Viewer Issue</title>
+</head>
+<body>
+    <h1>Debug PDF Viewer Issue</h1>
+    
+    <div id="test-results"></div>
+    
+    <script>
+        // Test function to simulate the openPdfViewer call
+        function openPdfViewer(bookId, sectionTitle, pageNumber, searchText) {
+            console.log('openPdfViewer called with:', {
+                bookId: bookId,
+                sectionTitle: sectionTitle,
+                pageNumber: pageNumber,
+                searchText: searchText
+            });
+        }
+        
+        // Test problematic section titles that might cause syntax errors
+        const testCases = [
+            {
+                bookId: 123,
+                sectionTitle: "Chapter 1: Introduction's Overview",
+                pageNumber: 42,
+                text: "Some sample text"
+            },
+            {
+                bookId: 456,
+                sectionTitle: 'Chapter 2: "Advanced Topics"',
+                pageNumber: 85,
+                text: "More sample text"
+            },
+            {
+                bookId: 789,
+                sectionTitle: "Chapter 3: Mixed 'Quotes' & \"Double Quotes\"",
+                pageNumber: 120,
+                text: "Text with special chars: & < > ' \""
+            }
+        ];
+        
+        // Test each case
+        testCases.forEach((testCase, index) => {
+            try {
+                console.log(`Testing case ${index + 1}:`, testCase.sectionTitle);
+                
+                // This is how the old code would have generated the onclick
+                const problematicOnclick = `openPdfViewer(${testCase.bookId}, '${testCase.sectionTitle}', ${testCase.pageNumber}, '${encodeURIComponent(testCase.text)}')`;
+                console.log('Problematic onclick would be:', problematicOnclick);
+                
+                // Try to evaluate it (this might cause the syntax error)
+                try {
+                    eval(problematicOnclick);
+                    console.log('✅ No syntax error for case', index + 1);
+                } catch (syntaxError) {
+                    console.error('❌ Syntax error for case', index + 1, ':', syntaxError.message);
+                    document.getElementById('test-results').innerHTML += `
+                        <div style="color: red; margin: 10px 0; padding: 10px; border: 1px solid red;">
+                            <strong>Case ${index + 1} FAILED:</strong><br>
+                            Section: ${testCase.sectionTitle}<br>
+                            Error: ${syntaxError.message}<br>
+                            Generated onclick: <code>${problematicOnclick}</code>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error testing case', index + 1, ':', error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -324,7 +324,15 @@ class BookRAGApp {
         if (!results || results.length === 0) {
             container.innerHTML = `
                 <div class="alert alert-info">
-                    <p>No results found for "${query}". Try different keywords or check your subscriptions.</p>
+                    <h4><i class="fas fa-info-circle"></i> No Results Found</h4>
+                    <p>No results found for "<strong>${query}</strong>".</p>
+                    <p>This could mean:</p>
+                    <ul>
+                        <li>You haven't subscribed to any authors yet</li>
+                        <li>The topic isn't covered in your subscribed authors' books</li>
+                        <li>Try using different keywords or phrases</li>
+                    </ul>
+                    <p>Check the <strong>Authors</strong> tab to subscribe to authors and access their books.</p>
                 </div>
             `;
             return;
@@ -332,8 +340,13 @@ class BookRAGApp {
 
         container.innerHTML = `
             <h3 style="margin-bottom: 1rem;">Search Results for "${query}"</h3>
-            ${results.map(result => `
-                <div class="result-item" onclick="openPdfViewer(${result.book_id}, '${result.section_title}', ${result.page_number}, '${encodeURIComponent(result.text)}')">
+            ${results.map((result, index) => `
+                <div class="result-item" 
+                     data-book-id="${result.book_id}" 
+                     data-section-title="${result.section_title.replace(/"/g, '&quot;')}" 
+                     data-page-number="${result.page_number}" 
+                     data-text="${encodeURIComponent(result.text)}"
+                     style="cursor: pointer;">
                     <div class="result-header">
                         <div class="result-score">Score: ${(result.score * 100).toFixed(1)}%</div>
                         <div class="result-book-info">
@@ -346,13 +359,34 @@ class BookRAGApp {
                         <strong>Page:</strong> ${result.page_number} |
                         <strong>Type:</strong> ${result.chunk_type} | 
                         <strong>Tokens:</strong> ${result.token_count}
-                        <button class="pdf-preview-btn" onclick="event.stopPropagation(); openPdfViewer(${result.book_id}, '${result.section_title}', ${result.page_number}, '${encodeURIComponent(result.text)}')">
+                        <button class="pdf-preview-btn" data-result-index="${index}">
                             <i class="fas fa-file-pdf"></i> View PDF (Page ${result.page_number})
                         </button>
                     </div>
                 </div>
             `).join('')}
         `;
+        
+        // Add event listeners for search result clicks
+        const resultItems = container.querySelectorAll('.result-item');
+        const resultButtons = container.querySelectorAll('.pdf-preview-btn');
+        
+        resultItems.forEach((item, index) => {
+            item.addEventListener('click', (e) => {
+                // Don't trigger if clicking on the button
+                if (e.target.closest('.pdf-preview-btn')) return;
+                
+                this.handleSearchResultClick(item);
+            });
+        });
+        
+        resultButtons.forEach((button, index) => {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const resultItem = button.closest('.result-item');
+                this.handleSearchResultClick(resultItem);
+            });
+        });
     }
 
     displayRAGResult(response, query) {
@@ -502,6 +536,27 @@ class BookRAGApp {
         }
     }
 
+    handleSearchResultClick(resultItem) {
+        try {
+            const bookId = parseInt(resultItem.getAttribute('data-book-id'));
+            const sectionTitle = resultItem.getAttribute('data-section-title');
+            const pageNumber = parseInt(resultItem.getAttribute('data-page-number'));
+            const encodedText = resultItem.getAttribute('data-text');
+            
+            console.log('🔍 handleSearchResultClick called with:');
+            console.log('  bookId:', bookId, typeof bookId);
+            console.log('  sectionTitle:', sectionTitle);
+            console.log('  pageNumber:', pageNumber, typeof pageNumber);
+            console.log('  encodedText length:', encodedText ? encodedText.length : 0);
+            
+            // Call openPdfViewer with the extracted data
+            openPdfViewer(bookId, sectionTitle, pageNumber, encodedText);
+        } catch (error) {
+            console.error('❌ Error in handleSearchResultClick:', error);
+            this.showAlert('Failed to open PDF: ' + error.message, 'error');
+        }
+    }
+
     async loadAuthors() {
         try {
             const response = await this.apiCall('/subscriptions/authors');
@@ -513,18 +568,30 @@ class BookRAGApp {
 
     displayAuthors(authors) {
         const container = document.getElementById('authorsGrid');
-        container.innerHTML = authors.map(author => `
+        container.innerHTML = authors.map((author, index) => `
             <div class="author-card">
                 <div class="author-avatar">${author.name.charAt(0)}</div>
                 <div class="author-name">${author.name}</div>
                 <div class="author-bio">${author.bio || 'No bio available'}</div>
                 <div class="book-count">${author.book_count} books</div>
                 <button class="btn ${author.is_subscribed ? 'btn-danger' : 'btn-primary'}" 
-                        onclick="app.toggleSubscription(${author.id}, ${author.is_subscribed})">
+                        data-author-id="${author.id}" 
+                        data-is-subscribed="${author.is_subscribed}"
+                        data-author-index="${index}">
                     ${author.is_subscribed ? 'Unsubscribe' : 'Subscribe'}
                 </button>
             </div>
         `).join('');
+        
+        // Add event listeners for subscription buttons
+        const subscriptionButtons = container.querySelectorAll('button[data-author-id]');
+        subscriptionButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const authorId = parseInt(button.getAttribute('data-author-id'));
+                const isSubscribed = button.getAttribute('data-is-subscribed') === 'true';
+                this.toggleSubscription(authorId, isSubscribed);
+            });
+        });
     }
 
     async toggleSubscription(authorId, isSubscribed) {

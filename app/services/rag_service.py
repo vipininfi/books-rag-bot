@@ -50,16 +50,27 @@ class RAGService:
         max_chunks: int = 8
     ) -> Dict[str, Any]:
         """Generate RAG answer using Gemini 2.0 Flash with retrieved context."""
+        # Check if user has any subscribed authors
+        if not author_ids:
+            return {
+                "answer": "You haven't subscribed to any authors yet. Please subscribe to authors in the Authors tab to get access to their books and ask questions about their content.",
+                "sources": [],
+                "total_chunks": 0,
+                "query": query,
+                "llm_model": self.model_name
+            }
+        
         # Get more chunks initially for better context
         search_limit = max(max_chunks * 2, 16)  # Get more chunks to choose from
         search_results = self.search_only(query, author_ids, limit=search_limit)
         
         if not search_results:
             return {
-                "answer": "No relevant information found in your subscribed authors' books.",
+                "answer": f"I couldn't find any relevant information about '{query}' in the books from your subscribed authors. This could mean:\n\n• The topic isn't covered in the available books\n• Try using different keywords or phrases\n• The content might be in books you haven't subscribed to yet\n\nYou can check the Authors tab to see all available authors and their books.",
                 "sources": [],
                 "total_chunks": 0,
-                "model_used": self.model_name
+                "query": query,
+                "llm_model": self.model_name
             }
         
         # Rerank and select best chunks
@@ -112,14 +123,15 @@ class RAGService:
             
         except Exception as e:
             print(f"Error generating answer with Gemini: {str(e)}")
-            answer = "I apologize, but I encountered an error while generating the answer. Please try again."
+            # Provide a fallback answer with the available context
+            answer = f"I found relevant information about '{query}' but encountered an issue generating a complete response. Here's what I found in the sources below. Please try asking your question again or rephrase it for better results."
         
         return {
             "answer": answer,
             "sources": sources,
             "total_chunks": len(reranked_results),
             "query": query,
-            "model_used": self.model_name
+            "llm_model": self.model_name
         }
     
     def _build_rag_prompt(self, query: str, context: str) -> str:

@@ -47,3 +47,4 @@ class RAGResponse(BaseModel):
     sources: List[RAGSource]
     total_chunks: int
     query: str
+    llm_model: Optional[str] = None

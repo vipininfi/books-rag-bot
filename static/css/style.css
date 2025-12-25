@@ -344,28 +344,44 @@ body {
 
 /* Alerts */
 .alert {
-    padding: 1rem 1.5rem;
+    padding: 1.5rem;
     border-radius: 10px;
     margin-bottom: 1rem;
     font-weight: 500;
+    border: 1px solid;
+}
+
+.alert h4 {
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.alert ul {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.alert li {
+    margin-bottom: 0.5rem;
 }
 
 .alert-success {
     background: #c6f6d5;
     color: #2f855a;
-    border: 1px solid #9ae6b4;
+    border-color: #9ae6b4;
 }
 
 .alert-error {
     background: #fed7d7;
     color: #c53030;
-    border: 1px solid #feb2b2;
+    border-color: #feb2b2;
 }
 
 .alert-info {
     background: #bee3f8;
     color: #2c5282;
-    border: 1px solid #90cdf4;
+    border-color: #90cdf4;
 }
 
 /* Responsive */

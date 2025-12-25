@@ -25,13 +25,16 @@ async def semantic_search(
         Subscription.user_id == current_user.id
     ).all()
     
-    if not subscriptions:
-        raise HTTPException(
-            status_code=400, 
-            detail="No author subscriptions found. Please subscribe to authors first."
-        )
-    
     author_ids = [sub.author_id for sub in subscriptions]
+    
+    if not author_ids:
+        # Return empty results with helpful message
+        return SearchResponse(
+            query=request.query,
+            results=[],
+            total_results=0,
+            subscribed_authors=[]
+        )
     
     # Perform search
     rag_service = RAGService()
@@ -80,15 +83,9 @@ async def rag_query(
         Subscription.user_id == current_user.id
     ).all()
     
-    if not subscriptions:
-        raise HTTPException(
-            status_code=400, 
-            detail="No author subscriptions found. Please subscribe to authors first."
-        )
-    
     author_ids = [sub.author_id for sub in subscriptions]
     
-    # Generate RAG answer
+    # Generate RAG answer (let the service handle empty author_ids)
     rag_service = RAGService()
     result = rag_service.generate_answer(
         query=request.query,
