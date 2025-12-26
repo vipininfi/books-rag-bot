@@ -316,6 +316,70 @@ class BookRAGApp {
         }
     }
 
+    // Test streaming functionality
+    async testStreaming() {
+        console.log('🧪 Testing streaming...');
+        const container = document.getElementById('ragResults');
+        
+        container.innerHTML = `
+            <div class="rag-container">
+                <h3>Streaming Test</h3>
+                <div class="sources-section">
+                    <h4><i class="fas fa-book"></i> Test Sources</h4>
+                    <div id="sources-container" class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Testing sources...
+                    </div>
+                </div>
+                <div class="answer-section">
+                    <h4><i class="fas fa-robot"></i> Test Answer</h4>
+                    <div id="answer-container" class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Testing answer...
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        try {
+            const response = await fetch('/api/v1/search/test-stream');
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let answerText = '';
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+                
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6).trim();
+                        if (jsonStr) {
+                            const data = JSON.parse(jsonStr);
+                            console.log('🧪 Test data:', data.type, data);
+                            
+                            if (data.type === 'sources') {
+                                this.displayStreamingSources(data.sources);
+                            } else if (data.type === 'answer_chunk') {
+                                answerText += data.content;
+                                this.updateStreamingAnswer(answerText);
+                            } else if (data.type === 'complete') {
+                                this.finalizeStreamingAnswer();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('🧪 Test error:', error);
+        }
+    }
+
     async handleRAG(e) {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -358,6 +422,8 @@ class BookRAGApp {
 
         try {
             const token = localStorage.getItem('token');
+            console.log('🚀 Starting RAG stream request...');
+            
             const response = await fetch('/api/v1/search/rag-stream', {
                 method: 'POST',
                 headers: {
@@ -366,17 +432,21 @@ class BookRAGApp {
                 },
                 body: JSON.stringify({
                     query: query,
-                    max_chunks: 8
+                    max_chunks: 10  // Updated to use 10 chunks
                 })
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error('🚀 HTTP Error:', response.status, errorText);
+                throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
             }
 
+            console.log('🚀 Response received, starting to read stream...');
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let answerText = '';
+            let buffer = ''; // Buffer for incomplete lines
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -385,48 +455,80 @@ class BookRAGApp {
                     break;
                 }
 
-                const chunk = decoder.decode(value);
-                console.log('🚀 Received chunk:', chunk.substring(0, 100) + '...');
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
                 
-                const lines = chunk.split('\n');
+                // Process complete lines
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
+                
+                console.log('🚀 Processing', lines.length, 'lines from chunk');
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
-                            const jsonStr = line.slice(6);
-                            if (jsonStr.trim()) {
+                            const jsonStr = line.slice(6).trim();
+                            if (jsonStr) {
+                                console.log('🚀 Parsing JSON:', jsonStr.substring(0, 100) + '...');
                                 const data = JSON.parse(jsonStr);
-                                console.log('🚀 Parsed data:', data.type, data);
+                                console.log('🚀 Parsed data type:', data.type);
                                 
                                 if (data.type === 'sources') {
-                                    console.log('🚀 Displaying sources:', data.sources.length);
+                                    console.log('🚀 Received sources:', data.sources?.length || 0);
                                     // Hide fullscreen loader once sources arrive
                                     this.hideLoading();
-                                    this.displayStreamingSources(data.sources);
+                                    
+                                    if (data.sources && data.sources.length > 0) {
+                                        this.displayStreamingSources(data.sources);
+                                    } else {
+                                        console.warn('🚀 No sources in data');
+                                        const sourcesContainer = document.getElementById('sources-container');
+                                        if (sourcesContainer) {
+                                            sourcesContainer.innerHTML = '<p>No sources found for this query.</p>';
+                                        }
+                                    }
                                 } else if (data.type === 'answer_chunk') {
-                                    console.log('🚀 Adding answer chunk:', data.content);
-                                    answerText += data.content;
+                                    console.log('🚀 Adding answer chunk, length:', data.content?.length || 0);
+                                    answerText += data.content || '';
                                     this.updateStreamingAnswer(answerText);
                                 } else if (data.type === 'complete') {
-                                    console.log(`✅ RAG Stream Complete: ${data.total_time.toFixed(3)}s`);
+                                    console.log(`✅ RAG Stream Complete: ${data.total_time?.toFixed(3) || 'unknown'}s`);
                                     this.finalizeStreamingAnswer();
                                 } else if (data.type === 'error') {
+                                    console.error('🚀 Stream error from server:', data.message);
                                     throw new Error(data.message);
+                                } else {
+                                    console.log('🚀 Unknown data type:', data.type);
                                 }
                             }
                         } catch (parseError) {
-                            console.warn('Failed to parse streaming data:', parseError, 'Line:', line);
+                            console.error('❌ Failed to parse streaming data:', parseError);
+                            console.error('❌ Problematic line:', line);
                         }
+                    } else if (line.trim()) {
+                        console.log('🚀 Non-data line:', line);
                     }
                 }
             }
+            
+            // Process any remaining buffer
+            if (buffer.trim()) {
+                console.log('🚀 Processing remaining buffer:', buffer);
+            }
+            
         } catch (error) {
-            console.error('Streaming error:', error);
+            console.error('❌ Streaming error:', error);
             this.hideLoading();
+            
+            // Show detailed error information
             container.innerHTML = `
                 <div class="alert alert-error">
                     <h4><i class="fas fa-exclamation-triangle"></i> Error</h4>
                     <p>Failed to generate answer: ${error.message}</p>
+                    <details style="margin-top: 1rem;">
+                        <summary>Technical Details</summary>
+                        <pre style="background: #f5f5f5; padding: 1rem; margin-top: 0.5rem; border-radius: 4px; overflow-x: auto;">${error.stack || error.toString()}</pre>
+                    </details>
                 </div>
             `;
         }

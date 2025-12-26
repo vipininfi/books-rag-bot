@@ -139,9 +139,14 @@
                             <textarea name="ragQuery" id="ragQuery" class="form-control" rows="3" 
                                     placeholder="Ask a question about the content in your subscribed books..." required></textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-robot"></i> Get AI Answer
-                        </button>
+                        <div style="display: flex; gap: 1rem;">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-robot"></i> Get AI Answer
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="app.testStreaming()">
+                                <i class="fas fa-flask"></i> Test Streaming
+                            </button>
+                        </div>
                     </form>
 
                     <div id="ragResults"></div>
