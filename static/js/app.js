@@ -4,6 +4,18 @@ class BookRAGApp {
         this.apiBase = '/api/v1';  // Use relative URL to avoid CORS issues
         this.token = localStorage.getItem('token');
         this.currentUser = null;
+        
+        // Voice functionality
+        this.recognition = null;
+        this.speechSynthesis = window.speechSynthesis;
+        this.currentUtterance = null;
+        this.isListening = false;
+        this.isSpeaking = false;
+        this.speechTimeout = null;
+        this.ttsTimeout = null; // For debounced TTS
+        this.ttsStarted = false; // Track if TTS has been initiated for current stream
+        this.userStoppedSpeech = false; // Track if user manually stopped speech
+        
         this.init();
     }
 
@@ -14,6 +26,44 @@ class BookRAGApp {
             this.showDashboard();
         } else {
             this.showAuth();
+        }
+        
+        // Check microphone permission status on load
+        this.checkMicrophonePermission();
+        
+        // Add page unload cleanup
+        window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
+        
+        window.addEventListener('unload', () => {
+            this.cleanup();
+        });
+    }
+
+    async checkMicrophonePermission() {
+        try {
+            if (navigator.permissions) {
+                const permission = await navigator.permissions.query({ name: 'microphone' });
+                console.log('🎤 Initial microphone permission:', permission.state);
+                
+                const voiceBtn = document.getElementById('voiceInputBtn');
+                if (permission.state === 'denied' && voiceBtn) {
+                    voiceBtn.classList.add('permission-needed');
+                    voiceBtn.title = 'Microphone access denied. Click to see instructions.';
+                }
+                
+                // Listen for permission changes
+                permission.onchange = () => {
+                    console.log('🎤 Microphone permission changed:', permission.state);
+                    if (permission.state === 'granted' && voiceBtn) {
+                        voiceBtn.classList.remove('permission-needed');
+                        voiceBtn.title = 'Click to speak your question (auto-submits after 3 seconds of silence)';
+                    }
+                };
+            }
+        } catch (error) {
+            console.log('🎤 Could not check microphone permission:', error);
         }
     }
 
@@ -48,6 +98,9 @@ class BookRAGApp {
         document.getElementById('searchForm')?.addEventListener('submit', (e) => this.handleSearch(e));
         document.getElementById('ragForm')?.addEventListener('submit', (e) => this.handleRAG(e));
 
+        // Voice controls
+        this.setupVoiceControls();
+
         // File upload drag & drop
         this.setupFileUpload();
 
@@ -55,6 +108,452 @@ class BookRAGApp {
         document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
         
         console.log('Event listeners setup complete');
+    }
+
+    setupVoiceControls() {
+        // Check for browser support
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            console.warn('Speech recognition not supported in this browser');
+            const voiceBtn = document.getElementById('voiceInputBtn');
+            if (voiceBtn) {
+                voiceBtn.style.display = 'none';
+            }
+            return;
+        }
+
+        // Initialize speech recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.recognition = new SpeechRecognition();
+        
+        this.recognition.continuous = true;
+        this.recognition.interimResults = true;
+        this.recognition.lang = 'en-US';
+
+        // Voice input button
+        const voiceBtn = document.getElementById('voiceInputBtn');
+        const voiceStatus = document.getElementById('voiceStatus');
+        const ragQuery = document.getElementById('ragQuery');
+        const voiceContainer = document.querySelector('.voice-input-container');
+
+        voiceBtn?.addEventListener('click', () => {
+            if (this.isListening) {
+                this.stopListening();
+            } else {
+                this.requestMicrophonePermission();
+            }
+        });
+
+        // Speech recognition events
+        this.recognition.onstart = () => {
+            console.log('🎤 Voice recognition started');
+            this.isListening = true;
+            voiceBtn?.classList.add('recording');
+            voiceBtn?.classList.remove('permission-needed'); // Clear permission indicator
+            voiceStatus?.classList.remove('hidden');
+            voiceContainer?.classList.add('listening');
+        };
+
+        this.recognition.onresult = (event) => {
+            let finalTranscript = '';
+            let interimTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+
+            // Update textarea with transcript
+            if (finalTranscript) {
+                ragQuery.value = finalTranscript.trim();
+                console.log('🎤 Final transcript:', finalTranscript);
+                
+                // Reset the auto-submit timer
+                this.resetSpeechTimeout();
+            } else if (interimTranscript) {
+                ragQuery.value = interimTranscript.trim();
+                console.log('🎤 Interim transcript:', interimTranscript);
+                
+                // Set auto-submit timer for 3 seconds of silence
+                this.resetSpeechTimeout();
+            }
+        };
+
+        this.recognition.onend = () => {
+            console.log('🎤 Voice recognition ended');
+            this.isListening = false;
+            voiceBtn?.classList.remove('recording');
+            voiceStatus?.classList.add('hidden');
+            voiceContainer?.classList.remove('listening');
+        };
+
+        this.recognition.onerror = (event) => {
+            console.error('🎤 Voice recognition error:', event.error);
+            this.stopListening();
+            this.handleVoiceError(event.error);
+        };
+
+        // Stop speech button
+        const stopSpeechBtn = document.getElementById('stopSpeechBtn');
+        stopSpeechBtn?.addEventListener('click', () => {
+            this.stopSpeaking();
+        });
+    }
+
+    async requestMicrophonePermission() {
+        try {
+            // Check if we already have permission
+            if (navigator.permissions) {
+                const permission = await navigator.permissions.query({ name: 'microphone' });
+                console.log('🎤 Microphone permission status:', permission.state);
+                
+                if (permission.state === 'denied') {
+                    this.showMicrophonePermissionDialog();
+                    return;
+                }
+            }
+
+            // Try to start listening
+            this.startListening();
+            
+        } catch (error) {
+            console.error('🎤 Error checking microphone permission:', error);
+            this.startListening(); // Fallback: try anyway
+        }
+    }
+
+    handleVoiceError(error) {
+        let message = '';
+        let showDialog = false;
+
+        switch (error) {
+            case 'not-allowed':
+                message = 'Microphone access denied. Please allow microphone access to use voice input.';
+                showDialog = true;
+                // Add visual indicator to microphone button
+                const voiceBtn = document.getElementById('voiceInputBtn');
+                if (voiceBtn) {
+                    voiceBtn.classList.add('permission-needed');
+                    voiceBtn.title = 'Click to enable microphone access';
+                }
+                break;
+            case 'no-speech':
+                message = 'No speech detected. Please try speaking again.';
+                break;
+            case 'audio-capture':
+                message = 'No microphone found. Please check your microphone connection.';
+                break;
+            case 'network':
+                message = 'Network error occurred. Please check your internet connection.';
+                break;
+            case 'service-not-allowed':
+                message = 'Speech recognition service not allowed. Please try again.';
+                break;
+            case 'bad-grammar':
+                message = 'Speech recognition grammar error. Please try again.';
+                break;
+            default:
+                message = `Voice recognition error: ${error}. Please try again.`;
+        }
+
+        if (showDialog) {
+            this.showMicrophonePermissionDialog();
+        } else {
+            this.showAlert(message, 'error');
+        }
+    }
+
+    showMicrophonePermissionDialog() {
+        const dialogHtml = `
+            <div class="permission-dialog">
+                <div class="permission-content">
+                    <h3><i class="fas fa-microphone-slash"></i> Microphone Access Required</h3>
+                    <p>To use voice input, please allow microphone access:</p>
+                    <ol>
+                        <li>Click the microphone icon in your browser's address bar</li>
+                        <li>Select "Allow" for microphone access</li>
+                        <li>Refresh the page if needed</li>
+                        <li>Try the voice input again</li>
+                    </ol>
+                    <div class="browser-instructions">
+                        <strong>Chrome/Edge:</strong> Look for <i class="fas fa-microphone"></i> in the address bar<br>
+                        <strong>Firefox:</strong> Look for <i class="fas fa-microphone"></i> in the address bar<br>
+                        <strong>Safari:</strong> Check Safari → Settings → Websites → Microphone
+                    </div>
+                    <div class="permission-actions">
+                        <button onclick="this.closest('.permission-dialog').remove()" class="btn btn-primary">
+                            Got it!
+                        </button>
+                        <button onclick="window.location.reload()" class="btn btn-secondary">
+                            Refresh Page
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remove any existing dialog
+        const existingDialog = document.querySelector('.permission-dialog');
+        if (existingDialog) {
+            existingDialog.remove();
+        }
+
+        // Add new dialog
+        document.body.insertAdjacentHTML('beforeend', dialogHtml);
+    }
+
+    startListening() {
+        if (!this.recognition) return;
+        
+        try {
+            console.log('🎤 Starting voice input...');
+            this.recognition.start();
+            
+            // Clear any existing text
+            const ragQuery = document.getElementById('ragQuery');
+            if (ragQuery) {
+                ragQuery.value = '';
+            }
+        } catch (error) {
+            console.error('🎤 Error starting voice recognition:', error);
+            this.showAlert('Failed to start voice input', 'error');
+        }
+    }
+
+    stopListening() {
+        if (!this.recognition || !this.isListening) return;
+        
+        console.log('🎤 Stopping voice input...');
+        this.recognition.stop();
+        this.clearSpeechTimeout();
+    }
+
+    resetSpeechTimeout() {
+        this.clearSpeechTimeout();
+        
+        // Auto-submit after 3 seconds of silence
+        this.speechTimeout = setTimeout(() => {
+            console.log('🎤 Auto-submitting after 3 seconds of silence');
+            const ragQuery = document.getElementById('ragQuery');
+            if (ragQuery && ragQuery.value.trim()) {
+                this.stopListening();
+                // Trigger form submission
+                const ragForm = document.getElementById('ragForm');
+                if (ragForm) {
+                    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                    ragForm.dispatchEvent(submitEvent);
+                }
+            }
+        }, 3000);
+    }
+
+    clearSpeechTimeout() {
+        if (this.speechTimeout) {
+            clearTimeout(this.speechTimeout);
+            this.speechTimeout = null;
+        }
+    }
+
+    // Speak text while streaming is still happening
+    speakStreamingText() {
+        const answerDiv = document.getElementById('streaming-answer');
+        if (!answerDiv || this.isSpeaking || !this.speechSynthesis || this.userStoppedSpeech) return;
+        
+        const textToSpeak = answerDiv.textContent || '';
+        if (!textToSpeak.trim() || textToSpeak.length < 50) return;
+        
+        console.log('🔊 Speaking streaming text:', textToSpeak.substring(0, 50) + '...');
+        
+        // Create utterance
+        this.currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
+        this.currentUtterance.rate = 0.9;
+        this.currentUtterance.pitch = 1.0;
+        this.currentUtterance.volume = 0.8;
+        
+        // Show speech controls
+        const speechControls = document.getElementById('speechControls');
+        speechControls?.classList.remove('hidden');
+        this.isSpeaking = true;
+        
+        this.currentUtterance.onstart = () => {
+            console.log('🔊 TTS started during streaming');
+        };
+        
+        this.currentUtterance.onend = () => {
+            console.log('🔊 TTS segment ended');
+            this.isSpeaking = false;
+            
+            // Don't continue if user stopped speech
+            if (this.userStoppedSpeech) {
+                console.log('🔊 User stopped speech, not continuing');
+                speechControls?.classList.add('hidden');
+                return;
+            }
+            
+            // Check if streaming is still happening and there's more content
+            const currentText = answerDiv.textContent || '';
+            const isStreamingComplete = answerDiv.classList.contains('complete');
+            
+            if (!isStreamingComplete && currentText.length > textToSpeak.length + 100) {
+                // More content has arrived, speak the new content
+                console.log('🔊 More content available, continuing speech');
+                this.ttsTimeout = setTimeout(() => {
+                    if (!this.isSpeaking && !this.userStoppedSpeech) {
+                        this.speakStreamingText();
+                    }
+                }, 500); // Short delay before continuing
+            } else if (isStreamingComplete && currentText.length > textToSpeak.length) {
+                // Streaming finished while we were speaking, speak the rest
+                console.log('🔊 Streaming complete, speaking remaining content');
+                this.ttsTimeout = setTimeout(() => {
+                    if (!this.isSpeaking && !this.userStoppedSpeech) {
+                        this.speakDisplayedText();
+                    }
+                }, 500);
+            } else {
+                // No more content or streaming not complete yet
+                console.log('🔊 Waiting for more content or completion');
+                speechControls?.classList.add('hidden');
+            }
+        };
+        
+        this.currentUtterance.onerror = (event) => {
+            console.error('🔊 TTS error during streaming:', event.error);
+            this.isSpeaking = false;
+            
+            // Only hide controls on non-interrupted errors
+            if (event.error !== 'interrupted') {
+                speechControls?.classList.add('hidden');
+            }
+            
+            // Don't retry if user stopped speech or if it's a non-recoverable error
+            if (this.userStoppedSpeech || event.error === 'not-allowed' || event.error === 'network') {
+                console.log('🔊 Not retrying due to user action or non-recoverable error');
+                return;
+            }
+        };
+        
+        // Speak the text
+        this.speechSynthesis.speak(this.currentUtterance);
+    }
+
+    // Simple TTS that reads displayed text
+    handleStreamingTTS() {
+        if (!this.speechSynthesis || this.isSpeaking) return;
+        
+        const answerDiv = document.getElementById('streaming-answer');
+        if (!answerDiv) return;
+        
+        // Only speak if streaming is complete to avoid interruptions
+        if (answerDiv.classList.contains('complete')) {
+            const displayedText = answerDiv.textContent || '';
+            if (displayedText.length > 50) {
+                console.log('🔊 Starting TTS for complete answer');
+                this.speakDisplayedText();
+            }
+        }
+    }
+
+    speakDisplayedText() {
+        const answerDiv = document.getElementById('streaming-answer');
+        if (!answerDiv || this.isSpeaking || this.userStoppedSpeech) return;
+        
+        const textToSpeak = answerDiv.textContent || '';
+        if (!textToSpeak.trim()) return;
+        
+        console.log('🔊 Speaking displayed text:', textToSpeak.substring(0, 50) + '...');
+        
+        // Create utterance
+        this.currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
+        this.currentUtterance.rate = 0.9;
+        this.currentUtterance.pitch = 1.0;
+        this.currentUtterance.volume = 0.8;
+        
+        // Show speech controls
+        const speechControls = document.getElementById('speechControls');
+        speechControls?.classList.remove('hidden');
+        this.isSpeaking = true;
+        
+        this.currentUtterance.onstart = () => {
+            console.log('🔊 TTS started');
+        };
+        
+        this.currentUtterance.onend = () => {
+            console.log('🔊 TTS ended naturally');
+            this.isSpeaking = false;
+            
+            // Don't continue if user stopped speech
+            if (this.userStoppedSpeech) {
+                console.log('🔊 User stopped speech, session complete');
+                speechControls?.classList.add('hidden');
+                return;
+            }
+            
+            // Check if there's significantly more content to speak (only if streaming is still active)
+            const currentText = answerDiv.textContent || '';
+            const isStreamingComplete = answerDiv.classList.contains('complete');
+            
+            if (!isStreamingComplete && currentText.length > textToSpeak.length + 100) {
+                // Wait a bit then speak the new content
+                console.log('🔊 More content available, will speak again');
+                this.ttsTimeout = setTimeout(() => {
+                    if (!this.isSpeaking && !this.userStoppedSpeech) {
+                        this.speakDisplayedText();
+                    }
+                }, 1500); // Longer delay to avoid interruptions
+            } else {
+                // Hide controls if done or no significant new content
+                console.log('🔊 Speech session complete');
+                speechControls?.classList.add('hidden');
+            }
+        };
+        
+        this.currentUtterance.onerror = (event) => {
+            console.error('🔊 TTS error:', event.error);
+            this.isSpeaking = false;
+            
+            // Don't hide controls immediately on interruption - might be temporary
+            if (event.error !== 'interrupted') {
+                const speechControls = document.getElementById('speechControls');
+                speechControls?.classList.add('hidden');
+            }
+            
+            // Don't retry if user stopped speech or if it's a non-recoverable error
+            if (this.userStoppedSpeech || event.error === 'not-allowed' || event.error === 'network') {
+                console.log('🔊 Not retrying due to user action or non-recoverable error');
+                return;
+            }
+        };
+        
+        // Speak the text
+        this.speechSynthesis.speak(this.currentUtterance);
+    }
+
+    stopSpeaking() {
+        console.log('🔊 Stopping speech - user requested or cleanup');
+        
+        // Cancel any ongoing speech
+        if (this.speechSynthesis) {
+            this.speechSynthesis.cancel();
+        }
+        
+        // Clear all timeouts
+        clearTimeout(this.ttsTimeout);
+        
+        // Reset all flags
+        this.isSpeaking = false;
+        this.ttsStarted = false;
+        this.userStoppedSpeech = true; // Flag to prevent auto-restart
+        
+        // Hide controls
+        const speechControls = document.getElementById('speechControls');
+        speechControls?.classList.add('hidden');
+        
+        // Clear current utterance
+        this.currentUtterance = null;
     }
 
     setupFileUpload() {
@@ -316,70 +815,6 @@ class BookRAGApp {
         }
     }
 
-    // Test streaming functionality
-    async testStreaming() {
-        console.log('🧪 Testing streaming...');
-        const container = document.getElementById('ragResults');
-        
-        container.innerHTML = `
-            <div class="rag-container">
-                <h3>Streaming Test</h3>
-                <div class="sources-section">
-                    <h4><i class="fas fa-book"></i> Test Sources</h4>
-                    <div id="sources-container" class="loading">
-                        <i class="fas fa-spinner fa-spin"></i> Testing sources...
-                    </div>
-                </div>
-                <div class="answer-section">
-                    <h4><i class="fas fa-robot"></i> Test Answer</h4>
-                    <div id="answer-container" class="loading">
-                        <i class="fas fa-spinner fa-spin"></i> Testing answer...
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        try {
-            const response = await fetch('/api/v1/search/test-stream');
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let answerText = '';
-            
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                const chunk = decoder.decode(value, { stream: true });
-                buffer += chunk;
-                
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-                
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const jsonStr = line.slice(6).trim();
-                        if (jsonStr) {
-                            const data = JSON.parse(jsonStr);
-                            console.log('🧪 Test data:', data.type, data);
-                            
-                            if (data.type === 'sources') {
-                                this.displayStreamingSources(data.sources);
-                            } else if (data.type === 'answer_chunk') {
-                                answerText += data.content;
-                                this.updateStreamingAnswer(answerText);
-                            } else if (data.type === 'complete') {
-                                this.finalizeStreamingAnswer();
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('🧪 Test error:', error);
-        }
-    }
-
     async handleRAG(e) {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -397,6 +832,12 @@ class BookRAGApp {
 
     async handleRAGQueryStream(query) {
         const container = document.getElementById('ragResults');
+        
+        // Stop any current speech and clear timeouts
+        this.stopSpeaking();
+        clearTimeout(this.ttsTimeout);
+        this.ttsStarted = false; // Reset TTS flag for new query
+        this.userStoppedSpeech = false; // Reset user stop flag for new query
         
         // Show initial loading
         this.showLoading('Finding relevant sources...');
@@ -496,7 +937,10 @@ class BookRAGApp {
                                     this.finalizeStreamingAnswer();
                                 } else if (data.type === 'error') {
                                     console.error('🚀 Stream error from server:', data.message);
-                                    throw new Error(data.message);
+                                    // Hide loader and show error properly
+                                    this.hideLoading();
+                                    this.showNoContentError(data.message);
+                                    return; // Exit the stream processing
                                 } else {
                                     console.log('🚀 Unknown data type:', data.type);
                                 }
@@ -518,17 +962,39 @@ class BookRAGApp {
             
         } catch (error) {
             console.error('❌ Streaming error:', error);
-            this.hideLoading();
+            this.hideLoading(); // Ensure loader is always hidden
             
             // Show detailed error information
             container.innerHTML = `
-                <div class="alert alert-error">
-                    <h4><i class="fas fa-exclamation-triangle"></i> Error</h4>
-                    <p>Failed to generate answer: ${error.message}</p>
-                    <details style="margin-top: 1rem;">
-                        <summary>Technical Details</summary>
-                        <pre style="background: #f5f5f5; padding: 1rem; margin-top: 0.5rem; border-radius: 4px; overflow-x: auto;">${error.stack || error.toString()}</pre>
-                    </details>
+                <div class="rag-container">
+                    <div class="no-content-error">
+                        <div class="error-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <h3>Something Went Wrong</h3>
+                        <p class="error-message">Failed to generate answer: ${error.message}</p>
+                        <div class="suggestions">
+                            <h4>What you can try:</h4>
+                            <ul>
+                                <li><i class="fas fa-redo"></i> Try asking your question again</li>
+                                <li><i class="fas fa-wifi"></i> Check your internet connection</li>
+                                <li><i class="fas fa-users"></i> Make sure you're subscribed to authors</li>
+                                <li><i class="fas fa-refresh"></i> Refresh the page if the problem persists</li>
+                            </ul>
+                        </div>
+                        <div class="error-actions">
+                            <button onclick="document.getElementById('ragQuery').focus()" class="btn btn-primary">
+                                <i class="fas fa-edit"></i> Try Again
+                            </button>
+                            <button onclick="window.location.reload()" class="btn btn-secondary">
+                                <i class="fas fa-refresh"></i> Refresh Page
+                            </button>
+                        </div>
+                        <details style="margin-top: 1rem;">
+                            <summary style="cursor: pointer; color: #6c757d;">Technical Details</summary>
+                            <pre style="background: #f8f9fa; padding: 1rem; margin-top: 0.5rem; border-radius: 4px; overflow-x: auto; text-align: left;">${error.stack || error.toString()}</pre>
+                        </details>
+                    </div>
                 </div>
             `;
         }
@@ -652,7 +1118,52 @@ class BookRAGApp {
                 answerDiv.classList.add('streaming');
                 console.log('🚀 Added streaming class to answer div');
             }
+
+            // Start TTS after 1 second of streaming with substantial content
+            if (!this.isSpeaking && !this.ttsStarted && text.length > 100) {
+                console.log('🔊 Scheduling TTS to start in 1 second...');
+                this.ttsStarted = true; // Mark that we've started TTS process
+                setTimeout(() => {
+                    if (!this.isSpeaking) {
+                        console.log('🔊 Starting TTS during streaming');
+                        this.speakStreamingText();
+                    }
+                }, 100); // Start speaking after 1 second
+            }
         }
+    }
+
+    showNoContentError(message) {
+        const container = document.getElementById('ragResults');
+        container.innerHTML = `
+            <div class="rag-container">
+                <div class="no-content-error">
+                    <div class="error-icon">
+                        <i class="fas fa-search"></i>
+                        <i class="fas fa-times-circle error-overlay"></i>
+                    </div>
+                    <h3>No Relevant Content Found</h3>
+                    <p class="error-message">${message}</p>
+                    <div class="suggestions">
+                        <h4>Try these suggestions:</h4>
+                        <ul>
+                            <li><i class="fas fa-lightbulb"></i> Use different keywords or phrases</li>
+                            <li><i class="fas fa-users"></i> Subscribe to more authors in the Authors tab</li>
+                            <li><i class="fas fa-question-circle"></i> Ask more specific questions</li>
+                            <li><i class="fas fa-book"></i> Check if the topic is covered in your subscribed books</li>
+                        </ul>
+                    </div>
+                    <div class="error-actions">
+                        <button onclick="document.getElementById('ragQuery').focus()" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Try Another Question
+                        </button>
+                        <button onclick="app.switchTab('authors')" class="btn btn-secondary">
+                            <i class="fas fa-users"></i> Browse Authors
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     finalizeStreamingAnswer() {
@@ -666,6 +1177,21 @@ class BookRAGApp {
         if (answerDiv) {
             answerDiv.classList.remove('streaming');
             answerDiv.classList.add('complete');
+            
+            // Clear any pending TTS timeout
+            clearTimeout(this.ttsTimeout);
+            
+            // If TTS is already running, let it continue and handle the completion
+            // If not running, start speaking the complete answer
+            if (!this.isSpeaking && answerDiv.textContent.trim()) {
+                console.log('🔊 Speaking complete answer after streaming finished');
+                setTimeout(() => {
+                    this.speakDisplayedText();
+                }, 500); // Small delay to ensure DOM is updated
+            } else if (this.isSpeaking) {
+                console.log('🔊 TTS already running, will continue with remaining content');
+                // The ongoing TTS will handle speaking the rest in its onend event
+            }
         }
     }
 
@@ -1075,6 +1601,12 @@ class BookRAGApp {
     }
 
     logout() {
+        // Clean up voice functionality
+        this.stopListening();
+        this.stopSpeaking();
+        this.clearSpeechTimeout();
+        
+        // Clear tokens and user data
         localStorage.removeItem('token');
         localStorage.removeItem('userRole');
         localStorage.removeItem('userId');
@@ -1126,6 +1658,34 @@ class BookRAGApp {
                 alert.remove();
             }
         }, 5000);
+    }
+    
+    cleanup() {
+        console.log('🧹 Cleaning up app resources');
+        
+        // Stop any ongoing speech
+        this.stopSpeaking();
+        
+        // Stop listening
+        this.stopListening();
+        
+        // Clear all timeouts
+        clearTimeout(this.speechTimeout);
+        clearTimeout(this.ttsTimeout);
+        
+        // Cancel any ongoing speech synthesis
+        if (this.speechSynthesis) {
+            this.speechSynthesis.cancel();
+        }
+        
+        // Reset all flags
+        this.isSpeaking = false;
+        this.isListening = false;
+        this.ttsStarted = false;
+        this.userStoppedSpeech = false;
+        
+        // Clear current utterance
+        this.currentUtterance = null;
     }
 }
 

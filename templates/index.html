@@ -136,16 +136,32 @@
                     <form id="ragForm">
                         <div class="form-group">
                             <label for="ragQuery">Your Question</label>
-                            <textarea name="ragQuery" id="ragQuery" class="form-control" rows="3" 
-                                    placeholder="Ask a question about the content in your subscribed books..." required></textarea>
+                            <div class="voice-input-container">
+                                <textarea name="ragQuery" id="ragQuery" class="form-control" rows="3" 
+                                        placeholder="Ask a question about the content in your subscribed books..." required></textarea>
+                                <div class="voice-controls">
+                                    <button type="button" id="voiceInputBtn" class="btn btn-voice" title="Click to speak your question (auto-submits after 3 seconds of silence). Allow microphone access when prompted.">
+                                        <i class="fas fa-microphone"></i>
+                                    </button>
+                                    <div id="voiceStatus" class="voice-status hidden">
+                                        <i class="fas fa-circle recording-indicator"></i>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div style="display: flex; gap: 1rem;">
+                        <div style="display: flex; gap: 1rem; align-items: center;">
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-robot"></i> Get AI Answer
                             </button>
-                            <button type="button" class="btn btn-secondary" onclick="app.testStreaming()">
-                                <i class="fas fa-flask"></i> Test Streaming
-                            </button>
+                            <div class="speech-controls hidden" id="speechControls">
+                                <button type="button" id="stopSpeechBtn" class="btn btn-warning">
+                                    <i class="fas fa-volume-mute"></i> Stop Speaking
+                                </button>
+                                <div class="speech-status">
+                                    <i class="fas fa-volume-up speaking-indicator"></i>
+                                    <span>Speaking answer...</span>
+                                </div>
+                            </div>
                         </div>
                     </form>
 
