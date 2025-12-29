@@ -172,17 +172,23 @@ class TokenTracker:
         user_id: Optional[int] = None, 
         days: int = 7
     ) -> Dict[str, Any]:
-        """Get token usage statistics."""
+        """Get token usage statistics with granular classification."""
         
         stats = {
             "total_tokens": 0,
             "total_cost": 0.0,
             "operations_count": 0,
-            "by_operation": {},
-            "by_model": {},
-            "by_day": {},
-            "average_tokens_per_operation": 0,
-            "success_rate": 0.0
+            "breakdown": {
+                "book_processing": {"tokens": 0, "cost": 0.0, "count": 0},
+                "ai_conversations": {
+                    "tokens": 0, "cost": 0.0, "count": 0,
+                    "embedding": {"tokens": 0, "cost": 0.0},
+                    "prompt": {"tokens": 0, "cost": 0.0},
+                    "answer": {"tokens": 0, "cost": 0.0}
+                },
+                "search_activity": {"tokens": 0, "cost": 0.0, "count": 0}
+            },
+            "by_day": {}
         }
         
         # Read recent log files
@@ -206,50 +212,60 @@ class TokenTracker:
                                 if user_id and usage_data["user_id"] != user_id:
                                     continue
                                 
-                                # Update stats
+                                # Update global stats
                                 stats["total_tokens"] += usage_data["total_tokens"]
                                 stats["total_cost"] += usage_data["cost_estimate"]
                                 stats["operations_count"] += 1
                                 
-                                # By operation type
+                                # Granular breakdown
                                 op_type = usage_data["operation_type"]
-                                if op_type not in stats["by_operation"]:
-                                    stats["by_operation"][op_type] = {
-                                        "count": 0, "tokens": 0, "cost": 0.0
-                                    }
-                                stats["by_operation"][op_type]["count"] += 1
-                                stats["by_operation"][op_type]["tokens"] += usage_data["total_tokens"]
-                                stats["by_operation"][op_type]["cost"] += usage_data["cost_estimate"]
+                                tokens = usage_data["total_tokens"]
+                                cost = usage_data["cost_estimate"]
+                                prompt_tokens = usage_data["prompt_tokens"]
+                                completion_tokens = usage_data["completion_tokens"]
                                 
-                                # By model
+                                # Calculate prompt/completion costs
                                 model = usage_data["model_name"]
-                                if model not in stats["by_model"]:
-                                    stats["by_model"][model] = {
-                                        "count": 0, "tokens": 0, "cost": 0.0
-                                    }
-                                stats["by_model"][model]["count"] += 1
-                                stats["by_model"][model]["tokens"] += usage_data["total_tokens"]
-                                stats["by_model"][model]["cost"] += usage_data["cost_estimate"]
+                                costs_config = self.token_costs.get(model, {"input": 0, "output": 0})
+                                prompt_cost = (prompt_tokens / 1000) * costs_config.get("input", 0)
+                                completion_cost = (completion_tokens / 1000) * costs_config.get("output", 0)
+
+                                if op_type == "book_batch_embedding":
+                                    stats["breakdown"]["book_processing"]["tokens"] += tokens
+                                    stats["breakdown"]["book_processing"]["cost"] += cost
+                                    stats["breakdown"]["book_processing"]["count"] += 1
+                                
+                                elif op_type == "rag_answer":
+                                    stats["breakdown"]["ai_conversations"]["tokens"] += tokens
+                                    stats["breakdown"]["ai_conversations"]["cost"] += cost
+                                    stats["breakdown"]["ai_conversations"]["count"] += 1
+                                    stats["breakdown"]["ai_conversations"]["prompt"]["tokens"] += prompt_tokens
+                                    stats["breakdown"]["ai_conversations"]["prompt"]["cost"] += prompt_cost
+                                    stats["breakdown"]["ai_conversations"]["answer"]["tokens"] += completion_tokens
+                                    stats["breakdown"]["ai_conversations"]["answer"]["cost"] += completion_cost
+                                
+                                elif op_type == "rag_embedding":
+                                    stats["breakdown"]["ai_conversations"]["embedding"]["tokens"] += tokens
+                                    stats["breakdown"]["ai_conversations"]["embedding"]["cost"] += cost
+                                    # We don't increment count here as it's part of the RAG flow
+                                
+                                elif op_type == "search_embedding":
+                                    stats["breakdown"]["search_activity"]["tokens"] += tokens
+                                    stats["breakdown"]["search_activity"]["cost"] += cost
+                                    stats["breakdown"]["search_activity"]["count"] += 1
                                 
                                 # By day
                                 day = usage_time.strftime("%Y-%m-%d")
                                 if day not in stats["by_day"]:
-                                    stats["by_day"][day] = {
-                                        "count": 0, "tokens": 0, "cost": 0.0
-                                    }
-                                stats["by_day"][day]["count"] += 1
-                                stats["by_day"][day]["tokens"] += usage_data["total_tokens"]
-                                stats["by_day"][day]["cost"] += usage_data["cost_estimate"]
+                                    stats["by_day"][day] = {"tokens": 0, "cost": 0.0}
+                                stats["by_day"][day]["tokens"] += tokens
+                                stats["by_day"][day]["cost"] += cost
                                 
                             except json.JSONDecodeError:
                                 continue
                                 
                 except Exception as e:
                     logger.error(f"Error reading log file {log_file}: {e}")
-        
-        # Calculate averages
-        if stats["operations_count"] > 0:
-            stats["average_tokens_per_operation"] = stats["total_tokens"] / stats["operations_count"]
         
         return stats
     

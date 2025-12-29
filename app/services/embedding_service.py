@@ -62,8 +62,8 @@ class EmbeddingService:
             "persistent_searches": persistent_stats["search_results_count"]
         }
     
-    def embed_text(self, text: str) -> List[float]:
-        """Generate embedding for a single text with aggressive caching."""
+    def embed_text(self, text: str, user_id: int = 0, operation_type: str = "embedding") -> List[float]:
+        """Generate embedding for a single text with aggressive caching and usage logging."""
         try:
             embed_start = time.time()
             
@@ -72,7 +72,7 @@ class EmbeddingService:
             if cache_key in self._session_cache:
                 self._cache_hits += 1
                 embed_time = time.time() - embed_start
-                print(f"⚡ SESSION CACHED: {embed_time:.3f}s for '{text[:30]}...'")
+                # No API call, so no token usage to log
                 return self._session_cache[cache_key]
             
             # Check persistent cache (fast)
@@ -82,7 +82,7 @@ class EmbeddingService:
                 # Also store in session cache
                 self._session_cache[cache_key] = cached_embedding
                 embed_time = time.time() - embed_start
-                print(f"💾 PERSISTENT CACHED: {embed_time:.3f}s for '{text[:30]}...'")
+                # No API call, so no token usage to log
                 return cached_embedding
             
             # Cache miss - need to call API
@@ -106,6 +106,16 @@ class EmbeddingService:
             )
             api_time = time.time() - api_start
             
+            # Log usage
+            from app.services.token_tracker import token_tracker
+            token_tracker.log_openai_response(
+                user_id=user_id,
+                operation_type=operation_type,
+                query=text[:100],
+                response=response,
+                response_time=api_time
+            )
+            
             embedding = response.data[0].embedding
             
             # Cache in both session and persistent cache
@@ -113,70 +123,64 @@ class EmbeddingService:
             persistent_cache.cache_embedding(text, embedding)
             
             embed_time = time.time() - embed_start
-            print(f"🤖 NEW API CALL: {embed_time:.3f}s (API: {api_time:.3f}s) for '{text[:30]}...'")
-            
             return embedding
             
         except Exception as e:
             print(f"❌ Error generating embedding: {str(e)}")
             raise e
     
-    def embed_query(self, query: str) -> List[float]:
-        """Generate embedding for a search query with caching."""
+    def embed_query(self, query: str, user_id: int = 0, operation_type: str = "embedding") -> List[float]:
+        """Generate embedding for a search query with caching and usage logging."""
         try:
-            query_start = time.time()
-            
             # Use the cached embed_text method
-            result = self.embed_text(query)
-            
-            query_time = time.time() - query_start
-            
-            # Show cache stats every 3 requests
-            if (self._cache_hits + self._cache_misses) % 3 == 0:
-                stats = self.get_cache_stats()
-                print(f"📊 Cache: {stats['session_hit_rate_percent']}% hit rate | Session: {stats['session_cache_size']} | Persistent: {stats['persistent_embeddings']}")
-            
+            result = self.embed_text(query, user_id=user_id, operation_type=operation_type)
             return result
             
         except Exception as e:
             print(f"❌ Error generating query embedding: {str(e)}")
             raise e
     
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for multiple texts."""
+    def embed_batch(self, texts: List[str], user_id: int = 0, operation_type: str = "embedding") -> List[List[float]]:
+        """Generate embeddings for multiple texts with usage logging."""
         try:
             # Clean and prepare texts
             processed_texts = []
             for text in texts:
                 text = text.strip()
                 if not text:
-                    text = "Empty content"  # Fallback for empty texts
-                
-                # Truncate if too long
+                    text = "Empty content"
                 if len(text) > 8000:
                     text = text[:8000]
-                
                 processed_texts.append(text)
             
-            # OpenAI allows batch processing up to 2048 inputs
-            batch_size = 100  # Conservative batch size for reliability
+            batch_size = 100
             all_embeddings = []
+            
+            from app.services.token_tracker import token_tracker
             
             for i in range(0, len(processed_texts), batch_size):
                 batch = processed_texts[i:i + batch_size]
                 
-                print(f"Processing embedding batch {i//batch_size + 1}/{(len(processed_texts) + batch_size - 1)//batch_size}")
-                
+                api_start = time.time()
                 response = self.client.embeddings.create(
                     model=self.model_name,
                     input=batch,
                     encoding_format="float"
                 )
+                api_time = time.time() - api_start
+                
+                # Log usage for the batch
+                token_tracker.log_openai_response(
+                    user_id=user_id,
+                    operation_type=operation_type,
+                    query=f"Batch embedding of {len(batch)} chunks",
+                    response=response,
+                    response_time=api_time
+                )
                 
                 batch_embeddings = [data.embedding for data in response.data]
                 all_embeddings.extend(batch_embeddings)
                 
-                # Add small delay to respect rate limits
                 if i + batch_size < len(processed_texts):
                     time.sleep(0.1)
             

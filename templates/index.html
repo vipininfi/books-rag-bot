@@ -11,8 +11,6 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar Backdrop -->
-        <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
         
         <!-- Sidebar Navigation -->
         <div id="sidebar" class="sidebar hidden">
@@ -21,9 +19,6 @@
                     <i class="fas fa-book-open"></i>
                     <span>BookRAG Pro</span>
                 </div>
-                <button id="sidebarToggle" class="sidebar-toggle">
-                    <i class="fas fa-times"></i>
-                </button>
             </div>
 
             <nav class="sidebar-nav">
@@ -61,11 +56,15 @@
                         <i class="fas fa-user-circle"></i>
                         <span>Profile Settings</span>
                     </a>
-                    <a href="#" class="nav-item" data-tab="subscriptions">
+                    <a href="#" class="nav-item" data-tab="subscriptions" id="navSubscriptions">
                         <i class="fas fa-heart"></i>
                         <span>My Subscriptions</span>
                     </a>
-                    <a href="#" class="nav-item" data-tab="analytics">
+                    <a href="#" class="nav-item" data-tab="subscribed-books" id="navSubscribedBooks">
+                        <i class="fas fa-book"></i>
+                        <span>Books</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="analytics" id="navAnalytics">
                         <i class="fas fa-chart-line"></i>
                         <span>Usage Analytics</span>
                     </a>
@@ -176,9 +175,6 @@
         <div class="main-content">
             <!-- Top Header -->
             <div class="top-header">
-                <button id="menuToggle" class="menu-toggle">
-                    <i class="fas fa-bars"></i>
-                </button>
                 <div class="header-title">
                     <h1 id="pageTitle">Search Books</h1>
                     <p id="pageSubtitle">Find information across your subscribed authors' books</p>
@@ -186,7 +182,6 @@
                 <div class="header-actions">
                     <button class="header-btn" id="notificationsBtn">
                         <i class="fas fa-bell"></i>
-                        <span class="notification-badge">3</span>
                     </button>
                     <div class="user-menu">
                         <button class="user-menu-btn" id="userMenuBtn">
@@ -399,6 +394,20 @@
                     </div>
                 </div>
 
+                <!-- Subscribed Books Tab (for readers) -->
+                <div id="subscribed-booksTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-book"></i> Subscribed Books</h2>
+                            <p>Books from authors you are subscribed to.</p>
+                        </div>
+                        
+                        <div id="subscribedBooksList" class="books-list">
+                            <!-- Books will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Subscriptions Tab -->
                 <div id="subscriptionsTab" class="tab-content hidden">
                     <div class="content-card">
@@ -421,41 +430,102 @@
                             <p>Track your platform usage and token consumption.</p>
                         </div>
                         
-                        <div class="analytics-grid">
+                        <div class="analytics-summary">
                             <div class="analytics-card">
-                                <div class="analytics-icon">
-                                    <i class="fas fa-search"></i>
-                                </div>
+                                <div class="analytics-icon"><i class="fas fa-search"></i></div>
                                 <div class="analytics-content">
                                     <h3 id="totalSearches">0</h3>
                                     <p>Total Searches</p>
                                 </div>
                             </div>
                             <div class="analytics-card">
-                                <div class="analytics-icon">
-                                    <i class="fas fa-robot"></i>
-                                </div>
+                                <div class="analytics-icon"><i class="fas fa-robot"></i></div>
                                 <div class="analytics-content">
                                     <h3 id="totalQuestions">0</h3>
                                     <p>AI Questions</p>
                                 </div>
                             </div>
                             <div class="analytics-card">
-                                <div class="analytics-icon">
-                                    <i class="fas fa-coins"></i>
-                                </div>
+                                <div class="analytics-icon"><i class="fas fa-coins"></i></div>
                                 <div class="analytics-content">
                                     <h3 id="totalTokens">0</h3>
                                     <p>Tokens Used</p>
                                 </div>
                             </div>
                             <div class="analytics-card">
-                                <div class="analytics-icon">
-                                    <i class="fas fa-dollar-sign"></i>
-                                </div>
+                                <div class="analytics-icon"><i class="fas fa-dollar-sign"></i></div>
                                 <div class="analytics-content">
-                                    <h3 id="totalCost">$0.00</h3>
+                                    <h3 id="totalCost">$0.0000</h3>
                                     <p>Total Cost</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-breakdown">
+                            <div class="breakdown-section">
+                                <h3><i class="fas fa-book-open"></i> Book Processing</h3>
+                                <div class="breakdown-stats">
+                                    <div class="stat-item">
+                                        <span>Tokens</span>
+                                        <span id="bookTokens">0</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span>Cost</span>
+                                        <span id="bookCost">$0.0000</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="breakdown-section">
+                                <h3><i class="fas fa-comments"></i> AI Conversations</h3>
+                                <div class="breakdown-stats">
+                                    <div class="stat-group">
+                                        <h4>Embedding</h4>
+                                        <div class="stat-item">
+                                            <span>Tokens</span>
+                                            <span id="aiEmbedTokens">0</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span>Cost</span>
+                                            <span id="aiEmbedCost">$0.0000</span>
+                                        </div>
+                                    </div>
+                                    <div class="stat-group">
+                                        <h4>Prompt (Input)</h4>
+                                        <div class="stat-item">
+                                            <span>Tokens</span>
+                                            <span id="aiPromptTokens">0</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span>Cost</span>
+                                            <span id="aiPromptCost">$0.0000</span>
+                                        </div>
+                                    </div>
+                                    <div class="stat-group">
+                                        <h4>Answer (Output)</h4>
+                                        <div class="stat-item">
+                                            <span>Tokens</span>
+                                            <span id="aiAnswerTokens">0</span>
+                                        </div>
+                                        <div class="stat-item">
+                                            <span>Cost</span>
+                                            <span id="aiAnswerCost">$0.0000</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="breakdown-section">
+                                <h3><i class="fas fa-bolt"></i> Search Activity</h3>
+                                <div class="breakdown-stats">
+                                    <div class="stat-item">
+                                        <span>Tokens</span>
+                                        <span id="searchTokens">0</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span>Cost</span>
+                                        <span id="searchCost">$0.0000</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>

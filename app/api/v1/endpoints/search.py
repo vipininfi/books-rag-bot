@@ -276,11 +276,11 @@ async def get_search_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get search statistics for the current user."""
+    """Get granular search statistics for the current user."""
     
     from app.services.token_tracker import token_tracker
     
-    # Get user-specific stats from token tracker
+    # Get user-specific stats from token tracker (granular breakdown)
     user_stats = token_tracker.get_usage_stats(user_id=current_user.id, days=30)
     
     # Get subscription count
@@ -288,7 +288,7 @@ async def get_search_stats(
         Subscription.user_id == current_user.id
     ).count()
     
-    # Get vector store stats (optional, but keep for system info)
+    # Get vector store stats
     rag_service = RAGService()
     try:
         vector_stats = rag_service.vector_store.get_collection_info()
@@ -297,10 +297,11 @@ async def get_search_stats(
         total_chunks = 0
     
     return {
-        "total_searches": user_stats.get("by_operation", {}).get("search", {}).get("count", 0),
-        "total_rag_queries": user_stats.get("by_operation", {}).get("rag_answer", {}).get("count", 0),
+        "total_searches": user_stats.get("breakdown", {}).get("search_activity", {}).get("count", 0),
+        "total_rag_queries": user_stats.get("breakdown", {}).get("ai_conversations", {}).get("count", 0),
         "total_tokens": user_stats.get("total_tokens", 0),
         "total_cost": user_stats.get("total_cost", 0.0),
+        "breakdown": user_stats.get("breakdown", {}),
         "user_subscriptions": subscription_count,
         "total_chunks_in_system": total_chunks,
         "by_day": user_stats.get("by_day", {})

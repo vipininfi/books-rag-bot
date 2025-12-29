@@ -65,47 +65,19 @@ html, body {
     top: 0;
     height: 100vh;
     z-index: 1000;
-    transform: translateX(-100%);
-    transition: var(--transition);
+    transform: translateX(0); /* Always visible */
     box-shadow: var(--shadow-lg);
 }
 
-.sidebar.active {
-    transform: translateX(0);
+/* Ensure main content always accounts for sidebar */
+.main-content {
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
 }
 
-/* Sidebar backdrop for mobile */
+/* Hide sidebar-backdrop as it's no longer needed */
 .sidebar-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    opacity: 0;
-    visibility: hidden;
-    transition: var(--transition);
-}
-
-.sidebar-backdrop.active {
-    opacity: 1;
-    visibility: visible;
-}
-
-/* Show sidebar by default on desktop but allow toggling */
-@media (min-width: 1025px) {
-    .sidebar.active {
-        transform: translateX(0);
-    }
-    
-    .main-content.sidebar-open {
-        margin-left: var(--sidebar-width);
-    }
-    
-    .sidebar-backdrop {
-        display: none;
-    }
+    display: none !important;
 }
 
 .sidebar-header {
@@ -588,7 +560,7 @@ html, body {
 
 .form-control {
     width: 100%;
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 1.25rem; /* Increased padding for better internal spacing */
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     font-size: 0.875rem;
@@ -787,7 +759,7 @@ html, body {
 }
 
 /* Analytics Styles */
-.analytics-grid {
+.analytics-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1.5rem;
@@ -803,6 +775,64 @@ html, body {
     display: flex;
     align-items: center;
     gap: 1rem;
+}
+
+.analytics-breakdown {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    padding: 0 2rem 2rem 2rem;
+}
+
+.breakdown-section {
+    background: var(--surface-color);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+.breakdown-section h3 {
+    font-size: 1.1rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--primary-color);
+}
+
+.breakdown-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.stat-group {
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.75rem;
+}
+
+.stat-group h4 {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.stat-item span:first-child {
+    color: var(--text-secondary);
+}
+
+.stat-item span:last-child {
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .analytics-icon {
@@ -1961,59 +1991,65 @@ html, body {
 /* Voice Input Controls */
 .voice-input-container {
     position: relative;
+    margin-bottom: 1rem;
+}
+
+.voice-input-container textarea {
+    padding-right: 4.5rem; /* Ensure text doesn't overlap with voice controls */
 }
 
 .voice-controls {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 45%;
+    right: 0.75rem;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 0.75rem;
+    z-index: 10;
 }
 
 .btn-voice {
-    background: #4299e1;
+    background: var(--primary-color);
     color: white;
     border: none;
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
+    width: 2.5rem;
+    height: 2.5rem;
+    aspect-ratio: 1 / 1; /* Ensure perfect circle */
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
+    transition: var(--transition);
+    box-shadow: var(--shadow-sm);
+    padding: 0; /* Remove any default padding */
 }
 
 .btn-voice:hover {
-    background: #3182ce;
+    background: var(--primary-dark);
     transform: scale(1.05);
 }
 
 .btn-voice.recording {
-    background: #e53e3e;
+    background: var(--danger-color);
     animation: pulse 1.5s infinite;
-}
-
-.btn-voice.recording:hover {
-    background: #c53030;
 }
 
 .voice-status {
     display: flex;
     align-items: center;
-    gap: 5px;
-    background: rgba(66, 153, 225, 0.1);
-    padding: 5px 10px;
-    border-radius: 15px;
-    font-size: 0.8rem;
-    color: #4299e1;
+    gap: 0.5rem;
+    background: rgba(37, 99, 235, 0.1);
+    padding: 0.4rem 0.8rem;
+    border-radius: 2rem;
+    font-size: 0.85rem;
+    color: var(--primary-color);
+    border: 1px solid rgba(37, 99, 235, 0.2);
 }
 
 .recording-indicator {
-    color: #e53e3e;
+    color: var(--danger-color);
     animation: pulse 1s infinite;
 }
 
@@ -2021,23 +2057,50 @@ html, body {
 .speech-controls {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 1rem;
+    background: rgba(16, 185, 129, 0.05);
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(16, 185, 129, 0.1);
 }
 
 .speech-status {
     display: flex;
     align-items: center;
-    gap: 5px;
-    background: rgba(56, 178, 172, 0.1);
-    padding: 5px 10px;
-    border-radius: 15px;
-    font-size: 0.8rem;
-    color: #38b2ac;
+    gap: 0.5rem;
+    color: var(--success-color);
+    font-weight: 500;
+    font-size: 0.9rem;
 }
 
 .speaking-indicator {
-    color: #38b2ac;
     animation: pulse 1s infinite;
+}
+
+/* RAG Form Layout Fixes */
+.rag-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem; /* Reduced gap to move button closer */
+    margin-top: 1rem;
+    padding: 0 2rem 2rem;
+}
+
+.rag-form .form-group {
+    margin-bottom: 0;
+}
+
+.rag-form .form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1.5rem;
+    padding-top: 0; /* Removed padding-top */
+}
+
+.rag-form .btn-primary {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
 }
 
 /* Animations */
@@ -2456,17 +2519,25 @@ html, body {
     margin-right: auto;
 }
 
+.subscriptions-list, .books-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    margin-top: 1rem;
+    padding: 0 2rem 2rem; /* Add padding to match card-header */
+}
+
 /* Subscription Cards */
 .subscription-card {
     background: var(--surface-color);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
+    border-radius: 1rem;
+    padding: 1.75rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
     transition: var(--transition);
+    box-shadow: var(--shadow-sm);
 }
 
 .subscription-card:hover {
@@ -2477,7 +2548,7 @@ html, body {
 .author-info {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 1.25rem;
     flex: 1;
 }
 
@@ -2494,10 +2565,18 @@ html, body {
     font-weight: 600;
 }
 
+.author-details {
+    flex: 1;
+    min-width: 0; /* Prevent overflow */
+}
+
 .author-details h3 {
     color: var(--text-primary);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
     font-size: 1.125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .author-details p {
@@ -2508,8 +2587,8 @@ html, body {
 
 .subscription-meta {
     display: flex;
-    gap: 1rem;
-    font-size: 0.75rem;
+    gap: 1.5rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
 }
 
@@ -2523,13 +2602,13 @@ html, body {
 .book-card {
     background: var(--surface-color);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
+    border-radius: 1rem;
+    padding: 1.75rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
     transition: var(--transition);
+    box-shadow: var(--shadow-sm);
 }
 
 .book-card:hover {
@@ -2539,12 +2618,16 @@ html, body {
 
 .book-info {
     flex: 1;
+    min-width: 0; /* Prevent overflow */
 }
 
 .book-info h3 {
     color: var(--text-primary);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
     font-size: 1.125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .book-info p {
@@ -2555,8 +2638,8 @@ html, body {
 
 .book-meta {
     display: flex;
-    gap: 1rem;
-    font-size: 0.75rem;
+    gap: 1.5rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
     align-items: center;
 }
@@ -2596,78 +2679,6 @@ html, body {
     color: var(--danger-color);
 }
 
-/* Voice Input Styles */
-.voice-input-container {
-    position: relative;
-}
-
-.voice-controls {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.btn-voice {
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 2.5rem;
-    height: 2.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-voice:hover {
-    background: var(--primary-dark);
-    transform: scale(1.05);
-}
-
-.btn-voice.recording {
-    background: var(--danger-color);
-    animation: pulse 1.5s infinite;
-}
-
-.voice-status {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: rgba(37, 99, 235, 0.1);
-    padding: 0.25rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    color: var(--primary-color);
-}
-
-.recording-indicator {
-    color: var(--danger-color);
-    animation: pulse 1s infinite;
-}
-
-/* Speech Controls */
-.speech-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.speech-status {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    background: rgba(16, 185, 129, 0.1);
-    padding: 0.25rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    color: var(--success-color);
-}
 
 .speaking-indicator {
     animation: pulse 1s infinite;

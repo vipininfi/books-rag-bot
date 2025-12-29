@@ -290,18 +290,24 @@ class VectorStore:
             print(f"❌ Error in filtered search: {e}")
             return []
     
-    def delete_book_chunks(self, book_id: int):
+    def delete_book_chunks(self, book_id: int, author_id: Optional[int] = None):
         """Delete all chunks for a specific book."""
+        namespace = f"author_{author_id}" if author_id else ""
         try:
             # Pinecone delete by metadata filter
             self.index.delete(
                 filter={
                     "book_id": {"$eq": book_id}
-                }
+                },
+                namespace=namespace
             )
-            print(f"Deleted chunks for book_id: {book_id}")
+            print(f"Deleted chunks for book_id: {book_id} in namespace: {namespace}")
             
         except Exception as e:
+            # Ignore "Namespace not found" errors
+            if "Namespace not found" in str(e):
+                print(f"Namespace {namespace} not found, skipping Pinecone deletion")
+                return
             print(f"Error deleting book chunks: {str(e)}")
             raise e
     

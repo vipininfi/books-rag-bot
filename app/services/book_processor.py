@@ -59,10 +59,20 @@ class BookProcessor:
             
             print(f"Generated {len(chunks)} chunks")
             
-            # Step 4: Generate embeddings
+            # Step 4: Generate embeddings with usage logging
             print("Step 4: Generating embeddings...")
+            
+            # Get user_id for token tracking
+            from app.models.author import Author
+            author = self.db.query(Author).filter(Author.id == book.author_id).first()
+            user_id = author.user_id if author else 0
+            
             chunk_texts = [chunk.text for chunk in chunks]
-            embeddings = self.embedding_service.embed_batch(chunk_texts)
+            embeddings = self.embedding_service.embed_batch(
+                chunk_texts, 
+                user_id=user_id, 
+                operation_type="book_batch_embedding"
+            )
             
             # Step 5: Store in vector database AND database
             print("Step 5: Storing in vector database...")

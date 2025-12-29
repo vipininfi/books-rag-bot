@@ -110,6 +110,42 @@ def get_book_pdf(
     )
 
 
+@router.get("/my")
+def list_my_books(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List books belonging to the current author."""
+    if current_user.role != "author":
+        raise HTTPException(status_code=403, detail="Only authors can access this endpoint")
+    
+    author = db.query(Author).filter(Author.user_id == current_user.id).first()
+    if not author:
+        raise HTTPException(status_code=404, detail="Author profile not found")
+    
+    books = db.query(Book).filter(Book.author_id == author.id).all()
+    return books
+
+
+@router.get("/subscribed")
+def list_subscribed_books(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List books from authors the current user is subscribed to."""
+    from app.models.subscription import Subscription
+    
+    # Get all author IDs the user is subscribed to
+    subscriptions = db.query(Subscription).filter(Subscription.user_id == current_user.id).all()
+    author_ids = [sub.author_id for sub in subscriptions]
+    
+    if not author_ids:
+        return []
+    
+    books = db.query(Book).filter(Book.author_id.in_(author_ids)).all()
+    return books
+
+
 @router.get("/{book_id}")
 def get_book(
     book_id: int,
@@ -143,6 +179,51 @@ def list_books(
     """List all books."""
     books = db.query(Book).offset(skip).limit(limit).all()
     return books
+
+
+@router.delete("/{book_id}")
+def delete_book(
+    book_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a book and all its associated data."""
+    # Find book
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    
+    # Check if user is the author
+    author = db.query(Author).filter(Author.user_id == current_user.id).first()
+    if not author or book.author_id != author.id:
+        raise HTTPException(status_code=403, detail="Only the author can delete this book")
+    
+    try:
+        # 1. Delete from Pinecone
+        from app.services.vector_store import VectorStore
+        vector_store = VectorStore()
+        vector_store.delete_book_chunks(book_id, author_id=book.author_id)
+        
+        # 2. Delete chunks from DB
+        from app.models.chunk import Chunk
+        db.query(Chunk).filter(Chunk.book_id == book_id).delete()
+        
+        # 3. Delete physical file
+        if os.path.exists(book.file_path):
+            try:
+                os.remove(book.file_path)
+            except Exception as e:
+                print(f"Warning: Could not delete file {book.file_path}: {e}")
+            
+        # 4. Delete book record
+        db.delete(book)
+        db.commit()
+        
+        return {"message": "Book and all associated data deleted successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting book: {str(e)}")
 
 
 def process_book_background(book_id: int):

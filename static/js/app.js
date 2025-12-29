@@ -80,127 +80,26 @@ class BookRAGApp {
     setupSidebarNavigation() {
         console.log('Setting up sidebar navigation...');
         
-        // Menu toggle
-        const menuToggle = document.getElementById('menuToggle');
-        const sidebar = document.getElementById('sidebar');
-        const mainContent = document.querySelector('.main-content');
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-
-        console.log('Elements found:', {
-            menuToggle: !!menuToggle,
-            sidebar: !!sidebar,
-            mainContent: !!mainContent,
-            sidebarToggle: !!sidebarToggle,
-            sidebarBackdrop: !!sidebarBackdrop
-        });
-
-        const toggleSidebar = (show) => {
-            console.log('toggleSidebar called with show:', show);
-            if (sidebar) {
-                if (show) {
-                    sidebar.classList.add('active');
-                } else {
-                    sidebar.classList.remove('active');
-                }
-            }
-            if (sidebarBackdrop) {
-                if (show) {
-                    sidebarBackdrop.classList.add('active');
-                } else {
-                    sidebarBackdrop.classList.remove('active');
-                }
-            }
-            if (mainContent) {
-                if (show) {
-                    mainContent.classList.add('sidebar-open');
-                } else {
-                    mainContent.classList.remove('sidebar-open');
-                }
-            }
-        };
-
-        if (menuToggle) {
-            menuToggle.addEventListener('click', () => {
-                console.log('Menu toggle clicked');
-                const isActive = sidebar?.classList.contains('active');
-                toggleSidebar(!isActive);
-            });
-            console.log('Menu toggle listener attached');
-        }
-
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => {
-                console.log('Sidebar close button clicked');
-                toggleSidebar(false);
-            });
-            console.log('Sidebar toggle listener attached');
-        }
-
-        if (sidebarBackdrop) {
-            sidebarBackdrop.addEventListener('click', () => {
-                console.log('Backdrop clicked');
-                toggleSidebar(false);
-            });
-            console.log('Backdrop listener attached');
-        }
-
-        // Navigation items
-        const navItems = document.querySelectorAll('.nav-item');
-        console.log('Found nav items:', navItems.length);
-        
-        navItems.forEach((item, index) => {
-            const tab = item.dataset.tab;
-            console.log(`Nav item ${index}: tab="${tab}"`);
-            
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                console.log('Nav item clicked:', tab);
-                if (tab) {
-                    this.switchTab(tab);
-                    // Close sidebar on mobile
-                    if (window.innerWidth <= 1024) {
-                        toggleSidebar(false);
-                    }
-                }
-            });
-        });
-
-        // User menu dropdown
         const userMenuBtn = document.getElementById('userMenuBtn');
         const userDropdown = document.getElementById('userDropdown');
-
-        console.log('User menu elements:', {
-            userMenuBtn: !!userMenuBtn,
-            userDropdown: !!userDropdown
-        });
 
         if (userMenuBtn && userDropdown) {
             userMenuBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                console.log('User menu clicked');
                 userDropdown.classList.toggle('active');
-                console.log('Dropdown active:', userDropdown.classList.contains('active'));
             });
 
-            // Close dropdown when clicking outside
             document.addEventListener('click', (e) => {
                 if (!userMenuBtn.contains(e.target) && !userDropdown.contains(e.target)) {
                     userDropdown.classList.remove('active');
                 }
             });
 
-            // User dropdown navigation
             const dropdownItems = userDropdown.querySelectorAll('a[data-tab]');
-            console.log('Found dropdown items:', dropdownItems.length);
-            
-            dropdownItems.forEach((item, index) => {
-                const tab = item.dataset.tab;
-                console.log(`Dropdown item ${index}: tab="${tab}"`);
-                
+            dropdownItems.forEach(item => {
                 item.addEventListener('click', (e) => {
                     e.preventDefault();
-                    console.log('Dropdown item clicked:', tab);
+                    const tab = item.dataset.tab;
                     if (tab) {
                         this.switchTab(tab);
                         userDropdown.classList.remove('active');
@@ -208,12 +107,25 @@ class BookRAGApp {
                 });
             });
         }
+
+        // Navigation items
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tab = item.dataset.tab;
+                if (tab) {
+                    this.switchTab(tab);
+                }
+            });
+        });
         
         console.log('Sidebar navigation setup complete');
     }
 
     switchTab(tabName) {
         console.log('Switching to tab:', tabName);
+        localStorage.setItem('activeTab', tabName);
         
         // Update sidebar navigation
         document.querySelectorAll('.nav-item').forEach(item => {
@@ -233,7 +145,8 @@ class BookRAGApp {
             'profile': { title: 'Profile Settings', subtitle: 'Manage your account information' },
             'subscriptions': { title: 'My Subscriptions', subtitle: 'Manage your author subscriptions' },
             'analytics': { title: 'Usage Analytics', subtitle: 'Track your platform usage' },
-            'my-books': { title: 'My Books', subtitle: 'Manage your uploaded books' }
+            'my-books': { title: 'My Books', subtitle: 'Manage your uploaded books' },
+            'subscribed-books': { title: 'Subscribed Books', subtitle: 'Books from authors you follow' }
         };
 
         const titleInfo = titles[tabName] || { title: 'Dashboard', subtitle: 'Welcome to BookRAG Pro' };
@@ -271,6 +184,9 @@ class BookRAGApp {
                 if (this.currentUser?.role === 'author') {
                     await this.loadMyBooks();
                 }
+                break;
+            case 'subscribed-books':
+                await this.loadSubscribedBooks();
                 break;
         }
     }
@@ -434,20 +350,99 @@ class BookRAGApp {
     }
 
     displayAnalytics(stats) {
+        // Summary stats
         document.getElementById('totalSearches').textContent = stats.total_searches || 0;
         document.getElementById('totalQuestions').textContent = stats.total_rag_queries || 0;
         document.getElementById('totalTokens').textContent = (stats.total_tokens || 0).toLocaleString();
         document.getElementById('totalCost').textContent = `$${(stats.total_cost || 0).toFixed(4)}`;
+
+        const breakdown = stats.breakdown || {};
+
+        // Book Processing
+        const book = breakdown.book_processing || {tokens: 0, cost: 0};
+        document.getElementById('bookTokens').textContent = (book.tokens || 0).toLocaleString();
+        document.getElementById('bookCost').textContent = `$${(book.cost || 0).toFixed(4)}`;
+
+        // AI Conversations
+        const ai = breakdown.ai_conversations || {
+            tokens: 0, cost: 0, 
+            embedding: {tokens: 0, cost: 0},
+            prompt: {tokens: 0, cost: 0},
+            answer: {tokens: 0, cost: 0}
+        };
+        document.getElementById('aiEmbedTokens').textContent = (ai.embedding?.tokens || 0).toLocaleString();
+        document.getElementById('aiEmbedCost').textContent = `$${(ai.embedding?.cost || 0).toFixed(4)}`;
+        document.getElementById('aiPromptTokens').textContent = (ai.prompt?.tokens || 0).toLocaleString();
+        document.getElementById('aiPromptCost').textContent = `$${(ai.prompt?.cost || 0).toFixed(4)}`;
+        document.getElementById('aiAnswerTokens').textContent = (ai.answer?.tokens || 0).toLocaleString();
+        document.getElementById('aiAnswerCost').textContent = `$${(ai.answer?.cost || 0).toFixed(4)}`;
+
+        // Search Activity
+        const search = breakdown.search_activity || {tokens: 0, cost: 0};
+        document.getElementById('searchTokens').textContent = (search.tokens || 0).toLocaleString();
+        document.getElementById('searchCost').textContent = `$${(search.cost || 0).toFixed(4)}`;
     }
 
     async loadMyBooks() {
         try {
-            const response = await this.apiCall('/books/');
+            const response = await this.apiCall('/books/my');
             this.displayMyBooks(response);
         } catch (error) {
             console.error('Failed to load books:', error);
             this.showAlert('Failed to load your books', 'error');
         }
+    }
+
+    async loadSubscribedBooks() {
+        try {
+            this.showLoading('Loading books...');
+            const response = await this.apiCall('/books/subscribed');
+            this.displaySubscribedBooks(response);
+        } catch (error) {
+            console.error('Failed to load subscribed books:', error);
+            this.showAlert('Failed to load books', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displaySubscribedBooks(books) {
+        const container = document.getElementById('subscribedBooksList');
+        if (!container) return;
+
+        if (!books || books.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-book-open"></i>
+                    <p>No books found from your subscribed authors.</p>
+                    <button class="btn btn-primary" onclick="app.switchTab('authors')">
+                        Discover Authors
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = books.map(book => `
+            <div class="book-card">
+                <div class="book-icon">
+                    <i class="fas fa-file-pdf"></i>
+                </div>
+                <div class="book-info">
+                    <h3>${book.title}</h3>
+                    <p>${book.description || 'No description available'}</p>
+                    <div class="book-meta">
+                        <span><i class="fas fa-file-alt"></i> ${book.total_pages || 0} pages</span>
+                        <span><i class="fas fa-clock"></i> ${new Date(book.created_at).toLocaleDateString()}</span>
+                    </div>
+                </div>
+                <div class="book-actions">
+                    <button class="btn btn-primary btn-sm" onclick="app.viewBook(${book.id})">
+                        <i class="fas fa-eye"></i> View
+                    </button>
+                </div>
+            </div>
+        `).join('');
     }
 
     displayMyBooks(books) {
@@ -500,11 +495,31 @@ class BookRAGApp {
         }
 
         try {
+            this.showLoading('Deleting book...');
             await this.apiCall(`/books/${bookId}`, { method: 'DELETE' });
             this.showAlert('Book deleted successfully', 'success');
-            this.loadMyBooks(); // Refresh the list
+            await this.loadMyBooks(); // Refresh the list
         } catch (error) {
             this.showAlert(error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async viewBook(bookId) {
+        try {
+            this.showLoading('Opening book...');
+            const book = await this.apiCall(`/books/${bookId}`);
+            
+            if (typeof window.openPdfViewer === 'function') {
+                await window.openPdfViewer(book.id, book.title);
+            } else {
+                throw new Error('PDF viewer not initialized');
+            }
+        } catch (error) {
+            this.showAlert('Failed to open book: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
         }
     }
 
@@ -517,12 +532,19 @@ class BookRAGApp {
             // Update header user info
             document.getElementById('headerUserName').textContent = this.currentUser.username || 'User';
             
-            // Show/hide author sections based on role
+            // Show/hide sections based on role
             const authorSection = document.getElementById('authorSection');
+            const navAnalytics = document.getElementById('navAnalytics');
+            const navSubscribedBooks = document.getElementById('navSubscribedBooks');
+            
             if (this.currentUser.role === 'author') {
-                authorSection.style.display = 'block';
+                if (authorSection) authorSection.style.display = 'block';
+                if (navAnalytics) navAnalytics.style.display = 'flex';
+                if (navSubscribedBooks) navSubscribedBooks.style.display = 'none';
             } else {
-                authorSection.style.display = 'none';
+                if (authorSection) authorSection.style.display = 'none';
+                if (navAnalytics) navAnalytics.style.display = 'none';
+                if (navSubscribedBooks) navSubscribedBooks.style.display = 'flex';
             }
         }
     }
@@ -618,6 +640,7 @@ class BookRAGApp {
         }
         if (mainContent) {
             mainContent.style.display = 'flex';
+            mainContent.classList.add('sidebar-open'); // Ensure main content shifts for permanent sidebar
             console.log('Main content shown');
         }
         
@@ -644,9 +667,13 @@ class BookRAGApp {
             });
         }
         
-        // Default to search tab for users, upload for authors
+        // Restore active tab or use default
+        const savedTab = localStorage.getItem('activeTab');
         const defaultTab = this.currentUser?.role === 'author' ? 'upload' : 'search';
-        this.switchTab(defaultTab);
+        const tabToOpen = savedTab || defaultTab;
+        
+        console.log('Restoring tab:', tabToOpen);
+        this.switchTab(tabToOpen);
     }
 
     async checkMicrophonePermission() {
@@ -712,9 +739,10 @@ class BookRAGApp {
         // File upload drag & drop
         this.setupFileUpload();
 
-        // Logout
-        document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
-        
+        // Profile settings
+        document.getElementById('profileForm')?.addEventListener('submit', (e) => this.handleProfileUpdate(e));
+        document.getElementById('cancelProfileBtn')?.addEventListener('click', () => this.switchTab('search'));
+
         console.log('Event listeners setup complete');
     }
 

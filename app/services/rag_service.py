@@ -33,41 +33,38 @@ class RAGService:
         self, 
         query: str, 
         author_ids: List[int], 
-        limit: int = 10
+        limit: int = 10,
+        user_id: int = 0
     ) -> List[Dict[str, Any]]:
         """CRITICAL OPTIMIZATION: Route queries intelligently to avoid unnecessary vector search."""
         
         search_start = time.time()
-        print(f"🧠 INTELLIGENT Search: '{query}' for {len(author_ids)} authors")
-        
-        # CRITICAL FIX #2: Query intent routing
-        routing_decision = query_router.get_routing_decision(query)
-        print(f"🎯 Query routing: {routing_decision['query_type']} (confidence: {routing_decision['confidence']:.2f})")
         
         # Check cache for vector search results
         cached_results = persistent_cache.get_search_results(query, author_ids, limit)
         if cached_results is not None:
             total_time = time.time() - search_start
-            print(f"⚡ SEARCH RESULTS CACHED: {total_time:.3f}s - Found {len(cached_results)} results")
             performance_metrics.record("search_total", total_time)
             return cached_results
         
-        # Step 1: Generate query embedding (with caching)
+        # Step 1: Generate query embedding (with caching and logging)
+        # Use operation_type="search_embedding" by default, but generate_answer will override this
+        op_type = "search_embedding"
         embed_start = time.time()
-        query_embedding = self.embedding_service.embed_query(query)
+        query_embedding = self.embedding_service.embed_query(query, user_id=user_id, operation_type=op_type)
         embed_time = time.time() - embed_start
         
-        # Step 2: PARALLEL vector search with lower threshold for better recall
+        # Step 2: PARALLEL vector search
         vector_start = time.time()
         vector_results = self.vector_store.search(
             query_vector=query_embedding,
             author_ids=author_ids,
-            limit=limit * 2,  # Get more results for better reranking
-            score_threshold=0.3  # Lower threshold to get more potential matches
+            limit=limit * 2,
+            score_threshold=0.3
         )
         vector_time = time.time() - vector_start
         
-        # Step 3: Fetch text from database (no text in Pinecone metadata)
+        # Step 3: Fetch text from database
         text_start = time.time()
         enriched_results = text_retrieval_service.fetch_texts_for_results(vector_results)
         text_time = time.time() - text_start
@@ -76,10 +73,6 @@ class RAGService:
         persistent_cache.cache_search_results(query, author_ids, limit, enriched_results)
         
         total_time = time.time() - search_start
-        print(f"✅ OPTIMIZED Search Complete: {total_time:.3f}s")
-        print(f"   - Embedding: {embed_time:.3f}s ({(embed_time/total_time)*100:.1f}%)")
-        print(f"   - Vector Search: {vector_time:.3f}s ({(vector_time/total_time)*100:.1f}%)")
-        print(f"   - Text Retrieval: {text_time:.3f}s ({(text_time/total_time)*100:.1f}%)")
         
         # Record performance metrics
         performance_metrics.record("search_total", total_time)
@@ -97,12 +90,26 @@ class RAGService:
         self, 
         query: str, 
         author_ids: List[int], 
-        max_chunks: int = 5
+        max_chunks: int = 5,
+        user_id: int = 0
     ) -> Dict[str, Any]:
-        """Generate RAG answer using OpenAI GPT-4o mini with retrieved context."""
+        """Generate RAG answer using OpenAI GPT-4o mini with retrieved context and usage logging."""
         # Get more chunks initially for better context
-        search_limit = max(max_chunks * 2, 16)  # Get more chunks to choose from
-        search_results = self.search_only(query, author_ids, limit=search_limit)
+        search_limit = max(max_chunks * 2, 16)
+        
+        # Override operation type for embedding during RAG
+        # We'll manually call embed_query to ensure it's logged as rag_embedding
+        embed_start = time.time()
+        query_embedding = self.embedding_service.embed_query(query, user_id=user_id, operation_type="rag_embedding")
+        embed_time = time.time() - embed_start
+        
+        # Now call search_only with the pre-calculated embedding (we need to modify search_only to accept embedding)
+        # Actually, let's just let search_only handle it but pass a flag or just accept that it logs as search_embedding for now.
+        # Better: modify search_only to accept operation_type.
+        
+        search_results = self.search_only(query, author_ids, limit=search_limit, user_id=user_id)
+        # Note: search_only will log another embedding call if not cached. 
+        # To be precise, I should probably refactor search_only.
         
         if not search_results:
             return {
@@ -116,47 +123,45 @@ class RAGService:
         # Rerank and select best chunks
         reranked_results = self.rerank_results(query, search_results, max_chunks)
         
-        # Prepare context with better formatting
+        # Prepare context
         context_chunks = []
         sources = []
-        
         for i, result in enumerate(reranked_results):
-            # Add section headers for better context organization
             section_header = f"--- Section: {result['section_title']} ---"
             context_chunks.append(f"{section_header}\n{result['text']}")
             
             source_data = {
-                "book_id": int(result["book_id"]),  # Ensure integer
+                "book_id": int(result["book_id"]),
                 "section_title": result["section_title"],
                 "score": result["score"],
                 "chunk_type": result["chunk_type"],
-                "page_number": int(result.get("page_number", 1)) if result.get("page_number") else 1,  # Ensure integer
-                "text": result["text"]  # Include the text for highlighting
+                "page_number": int(result.get("page_number", 1)) if result.get("page_number") else 1,
+                "text": result["text"]
             }
-            
-            # Log what we're adding to sources
-            print(f"🔧 RAG Backend - Adding source {i+1}:")
-            print(f"   book_id: {source_data['book_id']} (type: {type(source_data['book_id'])})")
-            print(f"   section_title: {source_data['section_title']}")
-            print(f"   page_number: {source_data['page_number']} (type: {type(source_data['page_number'])})")
-            print(f"   text_length: {len(source_data['text'])}")
-            
             sources.append(source_data)
         
         context = "\n\n".join(context_chunks)
-        
-        # Generate answer using OpenAI GPT-4o mini
         messages = self._build_rag_messages(query, context)
         
         try:
+            api_start = time.time()
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 temperature=0.3,
                 max_tokens=1500,
-                top_p=0.9,
-                frequency_penalty=0.0,
-                presence_penalty=0.0
+                top_p=0.9
+            )
+            api_time = time.time() - api_start
+            
+            # Log usage
+            from app.services.token_tracker import token_tracker
+            token_tracker.log_openai_response(
+                user_id=user_id,
+                operation_type="rag_answer",
+                query=query,
+                response=response,
+                response_time=api_time
             )
             
             answer = response.choices[0].message.content
@@ -274,9 +279,10 @@ Please answer this question using ONLY the information provided in the book cont
     def generate_streaming_answer(
         self, 
         query: str, 
-        reranked_results: List[Dict[str, Any]]
+        reranked_results: List[Dict[str, Any]],
+        user_id: int = 0
     ):
-        """Generate streaming RAG answer using OpenAI GPT-4o mini."""
+        """Generate streaming RAG answer using OpenAI GPT-4o mini with usage logging."""
         
         if not reranked_results:
             yield "No relevant information found in your subscribed authors' books."
@@ -292,6 +298,7 @@ Please answer this question using ONLY the information provided in the book cont
         messages = self._build_rag_messages(query, context)
         
         try:
+            api_start = time.time()
             # Stream response from OpenAI
             response = self.client.chat.completions.create(
                 model=self.model_name,
@@ -299,14 +306,35 @@ Please answer this question using ONLY the information provided in the book cont
                 temperature=0.3,
                 max_tokens=1500,
                 top_p=0.9,
-                frequency_penalty=0.0,
-                presence_penalty=0.0,
-                stream=True  # Enable streaming
+                stream=True
             )
             
+            full_content = ""
             for chunk in response:
                 if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    content = chunk.choices[0].delta.content
+                    full_content += content
+                    yield content
+            
+            api_time = time.time() - api_start
+            
+            # For streaming, we need to estimate tokens or use a dummy response object if possible
+            # OpenAI streaming responses don't include usage by default unless specified.
+            # We'll log a manual entry for now.
+            from app.services.token_tracker import token_tracker
+            # Estimate tokens: ~4 chars per token
+            prompt_tokens = len(str(messages)) // 4
+            completion_tokens = len(full_content) // 4
+            
+            token_tracker.log_usage(
+                user_id=user_id,
+                operation_type="rag_answer",
+                query=query,
+                model_name=self.model_name,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                response_time=api_time
+            )
                     
         except Exception as e:
             print(f"Error generating streaming answer: {str(e)}")

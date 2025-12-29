@@ -90,6 +90,8 @@ def get_my_subscriptions(
             id=sub.id,
             author_id=sub.author_id,
             author_name=sub.author.name,
+            author_bio=sub.author.bio,
+            book_count=len(sub.author.books),
             created_at=sub.created_at
         )
         for sub in subscriptions
