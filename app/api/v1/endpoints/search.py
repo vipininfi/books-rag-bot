@@ -278,24 +278,30 @@ async def get_search_stats(
 ):
     """Get search statistics for the current user."""
     
+    from app.services.token_tracker import token_tracker
+    
+    # Get user-specific stats from token tracker
+    user_stats = token_tracker.get_usage_stats(user_id=current_user.id, days=30)
+    
     # Get subscription count
     subscription_count = db.query(Subscription).filter(
         Subscription.user_id == current_user.id
     ).count()
     
-    # Get vector store stats
+    # Get vector store stats (optional, but keep for system info)
     rag_service = RAGService()
-    vector_stats = rag_service.vector_store.get_collection_info()
-    
-    # Get performance metrics
-    from app.core.performance import performance_metrics, get_optimization_suggestions
-    perf_stats = performance_metrics.get_all_stats()
-    suggestions = get_optimization_suggestions()
+    try:
+        vector_stats = rag_service.vector_store.get_collection_info()
+        total_chunks = vector_stats.get("total_points", 0)
+    except Exception:
+        total_chunks = 0
     
     return {
+        "total_searches": user_stats.get("by_operation", {}).get("search", {}).get("count", 0),
+        "total_rag_queries": user_stats.get("by_operation", {}).get("rag_answer", {}).get("count", 0),
+        "total_tokens": user_stats.get("total_tokens", 0),
+        "total_cost": user_stats.get("total_cost", 0.0),
         "user_subscriptions": subscription_count,
-        "total_chunks_in_system": vector_stats["total_points"],
-        "vector_dimension": vector_stats["vector_size"],
-        "performance_metrics": perf_stats,
-        "optimization_suggestions": suggestions
+        "total_chunks_in_system": total_chunks,
+        "by_day": user_stats.get("by_day", {})
     }

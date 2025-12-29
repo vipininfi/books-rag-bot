@@ -1,7 +1,7 @@
-// Book RAG System - Frontend JavaScript
+// BookRAG Pro - Frontend JavaScript
 class BookRAGApp {
     constructor() {
-        this.apiBase = '/api/v1';  // Use relative URL to avoid CORS issues
+        this.apiBase = '/api/v1';
         this.token = localStorage.getItem('token');
         this.currentUser = null;
         
@@ -12,23 +12,45 @@ class BookRAGApp {
         this.isListening = false;
         this.isSpeaking = false;
         this.speechTimeout = null;
-        this.ttsTimeout = null; // For debounced TTS
-        this.ttsStarted = false; // Track if TTS has been initiated for current stream
-        this.userStoppedSpeech = false; // Track if user manually stopped speech
+        this.ttsTimeout = null;
+        this.ttsStarted = false;
+        this.userStoppedSpeech = false;
         
         this.init();
     }
 
     async init() {
-        this.setupEventListeners();
+        console.log('App init started');
+        
+        console.log('Token from localStorage:', this.token);
+        
         if (this.token) {
-            await this.loadUserData();
-            this.showDashboard();
+            console.log('Token found, validating and loading user data');
+            try {
+                await this.loadUserData();
+                
+                // Validate that we have proper user data
+                if (this.currentUser && this.currentUser.id && this.currentUser.role) {
+                    console.log('Valid user data found, showing dashboard');
+                    this.showDashboard();
+                } else {
+                    console.log('Invalid user data, clearing token and showing auth');
+                    this.clearAuthData();
+                    this.showAuth();
+                }
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                // If there's an error loading user data, clear token and show auth
+                this.clearAuthData();
+                this.showAuth();
+            }
         } else {
+            console.log('No token found, showing auth');
             this.showAuth();
         }
         
-        // Check microphone permission status on load
+        // Setup event listeners AFTER determining which view to show
+        this.setupEventListeners();
         this.checkMicrophonePermission();
         
         // Add page unload cleanup
@@ -39,6 +61,592 @@ class BookRAGApp {
         window.addEventListener('unload', () => {
             this.cleanup();
         });
+        
+        console.log('App init completed');
+    }
+
+    clearAuthData() {
+        console.log('Clearing all auth data');
+        localStorage.removeItem('token');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('username');
+        localStorage.removeItem('email');
+        this.token = null;
+        this.currentUser = null;
+    }
+
+
+    setupSidebarNavigation() {
+        console.log('Setting up sidebar navigation...');
+        
+        // Menu toggle
+        const menuToggle = document.getElementById('menuToggle');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.querySelector('.main-content');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+        console.log('Elements found:', {
+            menuToggle: !!menuToggle,
+            sidebar: !!sidebar,
+            mainContent: !!mainContent,
+            sidebarToggle: !!sidebarToggle,
+            sidebarBackdrop: !!sidebarBackdrop
+        });
+
+        const toggleSidebar = (show) => {
+            console.log('toggleSidebar called with show:', show);
+            if (sidebar) {
+                if (show) {
+                    sidebar.classList.add('active');
+                } else {
+                    sidebar.classList.remove('active');
+                }
+            }
+            if (sidebarBackdrop) {
+                if (show) {
+                    sidebarBackdrop.classList.add('active');
+                } else {
+                    sidebarBackdrop.classList.remove('active');
+                }
+            }
+            if (mainContent) {
+                if (show) {
+                    mainContent.classList.add('sidebar-open');
+                } else {
+                    mainContent.classList.remove('sidebar-open');
+                }
+            }
+        };
+
+        if (menuToggle) {
+            menuToggle.addEventListener('click', () => {
+                console.log('Menu toggle clicked');
+                const isActive = sidebar?.classList.contains('active');
+                toggleSidebar(!isActive);
+            });
+            console.log('Menu toggle listener attached');
+        }
+
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                console.log('Sidebar close button clicked');
+                toggleSidebar(false);
+            });
+            console.log('Sidebar toggle listener attached');
+        }
+
+        if (sidebarBackdrop) {
+            sidebarBackdrop.addEventListener('click', () => {
+                console.log('Backdrop clicked');
+                toggleSidebar(false);
+            });
+            console.log('Backdrop listener attached');
+        }
+
+        // Navigation items
+        const navItems = document.querySelectorAll('.nav-item');
+        console.log('Found nav items:', navItems.length);
+        
+        navItems.forEach((item, index) => {
+            const tab = item.dataset.tab;
+            console.log(`Nav item ${index}: tab="${tab}"`);
+            
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('Nav item clicked:', tab);
+                if (tab) {
+                    this.switchTab(tab);
+                    // Close sidebar on mobile
+                    if (window.innerWidth <= 1024) {
+                        toggleSidebar(false);
+                    }
+                }
+            });
+        });
+
+        // User menu dropdown
+        const userMenuBtn = document.getElementById('userMenuBtn');
+        const userDropdown = document.getElementById('userDropdown');
+
+        console.log('User menu elements:', {
+            userMenuBtn: !!userMenuBtn,
+            userDropdown: !!userDropdown
+        });
+
+        if (userMenuBtn && userDropdown) {
+            userMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('User menu clicked');
+                userDropdown.classList.toggle('active');
+                console.log('Dropdown active:', userDropdown.classList.contains('active'));
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!userMenuBtn.contains(e.target) && !userDropdown.contains(e.target)) {
+                    userDropdown.classList.remove('active');
+                }
+            });
+
+            // User dropdown navigation
+            const dropdownItems = userDropdown.querySelectorAll('a[data-tab]');
+            console.log('Found dropdown items:', dropdownItems.length);
+            
+            dropdownItems.forEach((item, index) => {
+                const tab = item.dataset.tab;
+                console.log(`Dropdown item ${index}: tab="${tab}"`);
+                
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('Dropdown item clicked:', tab);
+                    if (tab) {
+                        this.switchTab(tab);
+                        userDropdown.classList.remove('active');
+                    }
+                });
+            });
+        }
+        
+        console.log('Sidebar navigation setup complete');
+    }
+
+    switchTab(tabName) {
+        console.log('Switching to tab:', tabName);
+        
+        // Update sidebar navigation
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const activeNavItem = document.querySelector(`[data-tab="${tabName}"]`);
+        if (activeNavItem) {
+            activeNavItem.classList.add('active');
+        }
+
+        // Update page title
+        const titles = {
+            'search': { title: 'Search Books', subtitle: 'Find information across your subscribed authors\' books' },
+            'rag': { title: 'AI Assistant', subtitle: 'Ask questions and get AI-powered answers' },
+            'authors': { title: 'Discover Authors', subtitle: 'Browse and subscribe to authors' },
+            'upload': { title: 'Upload Books', subtitle: 'Share your books with subscribers' },
+            'profile': { title: 'Profile Settings', subtitle: 'Manage your account information' },
+            'subscriptions': { title: 'My Subscriptions', subtitle: 'Manage your author subscriptions' },
+            'analytics': { title: 'Usage Analytics', subtitle: 'Track your platform usage' },
+            'my-books': { title: 'My Books', subtitle: 'Manage your uploaded books' }
+        };
+
+        const titleInfo = titles[tabName] || { title: 'Dashboard', subtitle: 'Welcome to BookRAG Pro' };
+        document.getElementById('pageTitle').textContent = titleInfo.title;
+        document.getElementById('pageSubtitle').textContent = titleInfo.subtitle;
+
+        // Show/hide content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+        const tabContent = document.getElementById(`${tabName}Tab`);
+        if (tabContent) {
+            tabContent.classList.remove('hidden');
+        }
+
+        // Load data for specific tabs
+        this.loadTabData(tabName);
+    }
+
+    async loadTabData(tabName) {
+        switch (tabName) {
+            case 'authors':
+                await this.loadAuthors();
+                break;
+            case 'profile':
+                await this.loadProfile();
+                break;
+            case 'subscriptions':
+                await this.loadSubscriptions();
+                break;
+            case 'analytics':
+                await this.loadAnalytics();
+                break;
+            case 'my-books':
+                if (this.currentUser?.role === 'author') {
+                    await this.loadMyBooks();
+                }
+                break;
+        }
+    }
+
+    async loadProfile() {
+        try {
+            const response = await this.apiCall('/users/profile');
+            
+            // Load current user data into profile form
+            document.getElementById('profileUsername').value = response.username || '';
+            document.getElementById('profileEmail').value = response.email || '';
+            
+            // Show/hide author bio field based on role
+            const authorBioGroup = document.getElementById('authorBioGroup');
+            if (response.role === 'author') {
+                authorBioGroup.style.display = 'block';
+                document.getElementById('profileBio').value = response.author_bio || '';
+            } else {
+                authorBioGroup.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Failed to load profile:', error);
+            this.showAlert('Failed to load profile data', 'error');
+        }
+    }
+
+    async handleProfileUpdate(e) {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        
+        // Validate password confirmation
+        const newPassword = formData.get('newPassword');
+        const confirmPassword = formData.get('confirmPassword');
+        
+        if (newPassword && newPassword !== confirmPassword) {
+            this.showAlert('New passwords do not match', 'error');
+            return;
+        }
+        
+        try {
+            this.showLoading('Updating profile...');
+            
+            const updateData = {
+                username: formData.get('username'),
+                email: formData.get('email')
+            };
+            
+            // Add bio for authors
+            if (this.currentUser?.role === 'author') {
+                updateData.bio = formData.get('bio');
+            }
+            
+            // Add password fields if provided
+            const currentPassword = formData.get('currentPassword');
+            if (currentPassword) {
+                updateData.current_password = currentPassword;
+                if (newPassword) {
+                    updateData.new_password = newPassword;
+                }
+            }
+            
+            const response = await this.apiCall('/users/profile', {
+                method: 'PUT',
+                body: JSON.stringify(updateData)
+            });
+            
+            // Update stored user data
+            this.currentUser.username = response.username;
+            this.currentUser.email = response.email;
+            localStorage.setItem('username', response.username);
+            localStorage.setItem('email', response.email);
+            
+            // Update UI
+            this.updateUserInfo();
+            
+            // Clear password fields
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            
+            this.showAlert('Profile updated successfully!', 'success');
+            
+        } catch (error) {
+            this.showAlert(error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    async loadSubscriptions() {
+        try {
+            const response = await this.apiCall('/subscriptions/');
+            this.displaySubscriptions(response);
+        } catch (error) {
+            console.error('Failed to load subscriptions:', error);
+            this.showAlert('Failed to load subscriptions', 'error');
+        }
+    }
+
+    displaySubscriptions(subscriptions) {
+        const container = document.getElementById('subscriptionsList');
+        
+        if (!subscriptions || subscriptions.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-heart" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                    <h3>No Subscriptions Yet</h3>
+                    <p>You haven't subscribed to any authors yet. Browse the Authors tab to discover and subscribe to authors.</p>
+                    <button class="btn btn-primary" onclick="app.switchTab('authors')">
+                        <i class="fas fa-users"></i> Browse Authors
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = subscriptions.map(sub => `
+            <div class="subscription-card">
+                <div class="author-info">
+                    <div class="author-avatar">
+                        ${sub.author_name.charAt(0)}
+                    </div>
+                    <div class="author-details">
+                        <h3>${sub.author_name}</h3>
+                        <p>${sub.author_bio || 'No bio available'}</p>
+                        <div class="subscription-meta">
+                            <span><i class="fas fa-book"></i> ${sub.book_count || 0} books</span>
+                            <span><i class="fas fa-calendar"></i> Subscribed ${new Date(sub.created_at).toLocaleDateString()}</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-danger" onclick="app.unsubscribe(${sub.author_id})">
+                    <i class="fas fa-heart-broken"></i> Unsubscribe
+                </button>
+            </div>
+        `).join('');
+    }
+
+    async unsubscribe(authorId) {
+        if (!confirm('Are you sure you want to unsubscribe from this author?')) {
+            return;
+        }
+
+        try {
+            await this.apiCall(`/subscriptions/${authorId}`, { method: 'DELETE' });
+            this.showAlert('Unsubscribed successfully', 'success');
+            this.loadSubscriptions(); // Refresh the list
+        } catch (error) {
+            this.showAlert(error.message, 'error');
+        }
+    }
+
+    async loadAnalytics() {
+        try {
+            const response = await this.apiCall('/search/stats');
+            this.displayAnalytics(response);
+        } catch (error) {
+            console.error('Failed to load analytics:', error);
+            this.showAlert('Failed to load analytics', 'error');
+        }
+    }
+
+    displayAnalytics(stats) {
+        document.getElementById('totalSearches').textContent = stats.total_searches || 0;
+        document.getElementById('totalQuestions').textContent = stats.total_rag_queries || 0;
+        document.getElementById('totalTokens').textContent = (stats.total_tokens || 0).toLocaleString();
+        document.getElementById('totalCost').textContent = `$${(stats.total_cost || 0).toFixed(4)}`;
+    }
+
+    async loadMyBooks() {
+        try {
+            const response = await this.apiCall('/books/');
+            this.displayMyBooks(response);
+        } catch (error) {
+            console.error('Failed to load books:', error);
+            this.showAlert('Failed to load your books', 'error');
+        }
+    }
+
+    displayMyBooks(books) {
+        const container = document.getElementById('myBooksList');
+        
+        if (!books || books.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-book" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                    <h3>No Books Uploaded</h3>
+                    <p>You haven't uploaded any books yet. Upload your first book to share with your subscribers.</p>
+                    <button class="btn btn-primary" onclick="app.switchTab('upload')">
+                        <i class="fas fa-upload"></i> Upload Book
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = books.map(book => `
+            <div class="book-card">
+                <div class="book-info">
+                    <h3>${book.title}</h3>
+                    <p>${book.description || 'No description available'}</p>
+                    <div class="book-meta">
+                        <span><i class="fas fa-calendar"></i> ${new Date(book.created_at).toLocaleDateString()}</span>
+                        <span class="status status-${book.processing_status}">
+                            <i class="fas fa-${book.processing_status === 'completed' ? 'check' : book.processing_status === 'processing' ? 'spinner fa-spin' : 'exclamation-triangle'}"></i>
+                            ${book.processing_status}
+                        </span>
+                    </div>
+                </div>
+                <div class="book-actions">
+                    ${book.processing_status === 'completed' ? `
+                        <button class="btn btn-secondary" onclick="app.viewBook(${book.id})">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    ` : ''}
+                    <button class="btn btn-danger" onclick="app.deleteBook(${book.id})">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async deleteBook(bookId) {
+        if (!confirm('Are you sure you want to delete this book? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            await this.apiCall(`/books/${bookId}`, { method: 'DELETE' });
+            this.showAlert('Book deleted successfully', 'success');
+            this.loadMyBooks(); // Refresh the list
+        } catch (error) {
+            this.showAlert(error.message, 'error');
+        }
+    }
+
+    updateUserInfo() {
+        if (this.currentUser) {
+            // Update sidebar user info
+            document.getElementById('sidebarUserName').textContent = this.currentUser.username || 'User';
+            document.getElementById('sidebarUserRole').textContent = this.currentUser.role || 'user';
+            
+            // Update header user info
+            document.getElementById('headerUserName').textContent = this.currentUser.username || 'User';
+            
+            // Show/hide author sections based on role
+            const authorSection = document.getElementById('authorSection');
+            if (this.currentUser.role === 'author') {
+                authorSection.style.display = 'block';
+            } else {
+                authorSection.style.display = 'none';
+            }
+        }
+    }
+
+    showAuth() {
+        console.log('=== showAuth called ===');
+        const authSection = document.getElementById('authSection');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.querySelector('.main-content');
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+        
+        console.log('Elements found:', {
+            authSection: !!authSection,
+            sidebar: !!sidebar,
+            mainContent: !!mainContent,
+            sidebarBackdrop: !!sidebarBackdrop
+        });
+        
+        // Hide dashboard elements first
+        if (sidebar) {
+            sidebar.classList.add('hidden');
+            sidebar.classList.remove('active');
+            sidebar.style.display = 'none';
+            console.log('✓ Sidebar hidden');
+        }
+        if (mainContent) {
+            mainContent.style.display = 'none';
+            mainContent.classList.remove('sidebar-open');
+            console.log('✓ Main content hidden');
+        }
+        if (sidebarBackdrop) {
+            sidebarBackdrop.classList.remove('active');
+            sidebarBackdrop.style.display = 'none';
+            console.log('✓ Backdrop hidden');
+        }
+        
+        // Show auth section
+        if (authSection) {
+            authSection.classList.remove('hidden');
+            authSection.style.display = 'flex';
+            authSection.style.visibility = 'visible';
+            authSection.style.opacity = '1';
+            authSection.style.position = 'absolute';
+            authSection.style.top = '0';
+            authSection.style.left = '0';
+            authSection.style.width = '100vw';
+            authSection.style.height = '100vh';
+            authSection.style.zIndex = '2000';
+            
+            console.log('✓ Auth section shown');
+            console.log('Auth section styles:', {
+                display: authSection.style.display,
+                visibility: authSection.style.visibility,
+                opacity: authSection.style.opacity,
+                position: authSection.style.position,
+                zIndex: authSection.style.zIndex
+            });
+            
+            // Force a reflow
+            authSection.offsetHeight;
+            
+            console.log('Auth section computed display:', window.getComputedStyle(authSection).display);
+            console.log('Auth section computed visibility:', window.getComputedStyle(authSection).visibility);
+        } else {
+            console.error('❌ Auth section not found!');
+        }
+        
+        console.log('=== showAuth completed ===');
+    }
+
+    showDashboard() {
+        console.log('showDashboard called');
+        const authSection = document.getElementById('authSection');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.querySelector('.main-content');
+        
+        console.log('Auth section:', authSection);
+        console.log('Sidebar:', sidebar);
+        console.log('Main content:', mainContent);
+        
+        // First, ensure auth is hidden
+        if (authSection) {
+            authSection.classList.add('hidden');
+            authSection.style.display = 'none';
+            console.log('Auth section hidden');
+        }
+        
+        // Then show dashboard elements
+        if (sidebar) {
+            sidebar.classList.remove('hidden');
+            sidebar.style.display = 'flex';
+            console.log('Sidebar shown');
+        }
+        if (mainContent) {
+            mainContent.style.display = 'flex';
+            console.log('Main content shown');
+        }
+        
+        this.updateUserInfo();
+        
+        // Setup sidebar navigation AFTER showing the dashboard
+        this.setupSidebarNavigation();
+        
+        // Setup logout buttons
+        const sidebarLogoutBtn = document.getElementById('sidebarLogoutBtn');
+        const headerLogoutBtn = document.getElementById('headerLogoutBtn');
+        
+        if (sidebarLogoutBtn) {
+            sidebarLogoutBtn.addEventListener('click', () => {
+                console.log('Sidebar logout clicked');
+                this.logout();
+            });
+        }
+        
+        if (headerLogoutBtn) {
+            headerLogoutBtn.addEventListener('click', () => {
+                console.log('Header logout clicked');
+                this.logout();
+            });
+        }
+        
+        // Default to search tab for users, upload for authors
+        const defaultTab = this.currentUser?.role === 'author' ? 'upload' : 'search';
+        this.switchTab(defaultTab);
     }
 
     async checkMicrophonePermission() {
@@ -630,12 +1238,46 @@ class BookRAGApp {
         }
     }
 
+
+    async loadUserData() {
+        try {
+            // Load user data from localStorage
+            const userRole = localStorage.getItem('userRole');
+            const userId = localStorage.getItem('userId');
+            const username = localStorage.getItem('username');
+            const email = localStorage.getItem('email');
+            
+            console.log('Loading user data from localStorage:', {
+                userRole,
+                userId,
+                username,
+                email
+            });
+            
+            if (userRole && userId && username && email) {
+                this.currentUser = {
+                    id: parseInt(userId),
+                    role: userRole,
+                    username: username,
+                    email: email
+                };
+                console.log('User data loaded successfully:', this.currentUser);
+            } else {
+                console.log('Incomplete user data in localStorage');
+                throw new Error('Incomplete user data');
+            }
+        } catch (error) {
+            console.error('Failed to load user data:', error);
+            throw error;
+        }
+    }
+
     async handleLogin(e) {
         e.preventDefault();
         const formData = new FormData(e.target);
         
         try {
-            this.showLoading('Logging in...');
+            this.showLoading('Signing in...');
             const response = await this.apiCall('/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -651,13 +1293,17 @@ class BookRAGApp {
             // Store user info
             this.currentUser = {
                 id: response.user_id,
-                role: response.user_role
+                role: response.user_role,
+                username: formData.get('email').split('@')[0], // Extract username from email
+                email: formData.get('email')
             };
             localStorage.setItem('userRole', response.user_role);
             localStorage.setItem('userId', response.user_id);
+            localStorage.setItem('username', this.currentUser.username);
+            localStorage.setItem('email', this.currentUser.email);
             
             this.showDashboard();
-            this.showAlert('Login successful!', 'success');
+            this.showAlert('Welcome back!', 'success');
         } catch (error) {
             this.showAlert(error.message, 'error');
         } finally {
@@ -666,15 +1312,8 @@ class BookRAGApp {
     }
 
     async handleRegister(e) {
-        console.log('handleRegister called');
         e.preventDefault();
         const formData = new FormData(e.target);
-        
-        console.log('Form data:', {
-            email: formData.get('email'),
-            username: formData.get('username'),
-            role: formData.get('role')
-        });
         
         try {
             this.showLoading('Creating account...');
@@ -694,13 +1333,17 @@ class BookRAGApp {
             // Store user info
             this.currentUser = {
                 id: response.user_id,
-                role: response.user_role
+                role: response.user_role,
+                username: formData.get('username'),
+                email: formData.get('email')
             };
             localStorage.setItem('userRole', response.user_role);
             localStorage.setItem('userId', response.user_id);
+            localStorage.setItem('username', this.currentUser.username);
+            localStorage.setItem('email', this.currentUser.email);
             
             this.showDashboard();
-            this.showAlert('Account created successfully!', 'success');
+            this.showAlert('Account created successfully! Welcome to BookRAG Pro!', 'success');
         } catch (error) {
             console.error('Registration error:', error);
             this.showAlert(error.message, 'error');
@@ -709,22 +1352,24 @@ class BookRAGApp {
         }
     }
 
-    async loadUserData() {
-        try {
-            // Load user data from localStorage
-            const userRole = localStorage.getItem('userRole');
-            const userId = localStorage.getItem('userId');
-            
-            if (userRole && userId) {
-                this.currentUser = {
-                    id: parseInt(userId),
-                    role: userRole
-                };
-            }
-        } catch (error) {
-            console.error('Failed to load user data:', error);
-            this.logout();
-        }
+    logout() {
+        console.log('Logout called');
+        
+        // Clean up voice functionality
+        this.stopListening();
+        this.stopSpeaking();
+        this.clearSpeechTimeout();
+        
+        // Clear all auth data
+        this.clearAuthData();
+        
+        console.log('Calling showAuth from logout');
+        this.showAuth();
+        
+        // Show alert after a small delay to ensure auth is visible
+        setTimeout(() => {
+            this.showAlert('Logged out successfully', 'info');
+        }, 100);
     }
 
     async handleBookUpload(e) {
@@ -1555,66 +2200,6 @@ class BookRAGApp {
         }
     }
 
-    switchTab(tabName) {
-        // Update active tab
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-        const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
-        if (activeTab) {
-            activeTab.classList.add('active');
-        }
-
-        // Show/hide content
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.add('hidden');
-        });
-        const tabContent = document.getElementById(`${tabName}Tab`);
-        if (tabContent) {
-            tabContent.classList.remove('hidden');
-        }
-
-        // Load data for specific tabs
-        if (tabName === 'authors') {
-            this.loadAuthors();
-        }
-    }
-
-    showAuth() {
-        document.getElementById('authSection').classList.remove('hidden');
-        document.getElementById('dashboardSection').classList.add('hidden');
-    }
-
-    showDashboard() {
-        document.getElementById('authSection').classList.add('hidden');
-        document.getElementById('dashboardSection').classList.remove('hidden');
-        
-        // Show/hide tabs based on user role
-        const uploadTab = document.querySelector('[data-tab="upload"]');
-        if (this.currentUser?.role === 'author') {
-            uploadTab.classList.remove('hidden');
-            this.switchTab('upload');
-        } else {
-            uploadTab.classList.add('hidden');
-            this.switchTab('search');
-        }
-    }
-
-    logout() {
-        // Clean up voice functionality
-        this.stopListening();
-        this.stopSpeaking();
-        this.clearSpeechTimeout();
-        
-        // Clear tokens and user data
-        localStorage.removeItem('token');
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('userId');
-        this.token = null;
-        this.currentUser = null;
-        this.showAuth();
-        this.showAlert('Logged out successfully', 'info');
-    }
 
     showLoading(message = 'Loading...') {
         const loading = document.getElementById('loadingOverlay');
@@ -1692,8 +2277,17 @@ class BookRAGApp {
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing app...');
-    window.app = new BookRAGApp();
-    console.log('App initialized:', window.app);
+    console.log('Auth section exists:', !!document.getElementById('authSection'));
+    console.log('Sidebar exists:', !!document.getElementById('sidebar'));
+    console.log('Main content exists:', !!document.querySelector('.main-content'));
+    
+    try {
+        window.app = new BookRAGApp();
+        console.log('App initialized successfully:', window.app);
+    } catch (error) {
+        console.error('Failed to initialize app:', error);
+        console.error('Error stack:', error.stack);
+    }
 });
 
 // PDF Viewer functionality

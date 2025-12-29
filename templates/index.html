@@ -3,83 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Book RAG System - AI-Powered Book Search</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>BookRAG Pro - AI-Powered Book Search Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1><i class="fas fa-book-open"></i> Book RAG System</h1>
-            <p>AI-Powered Book Search & Question Answering Platform</p>
-        </div>
+    <div class="app-container">
+        <!-- Sidebar Backdrop -->
+        <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+        
+        <!-- Sidebar Navigation -->
+        <div id="sidebar" class="sidebar hidden">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-book-open"></i>
+                    <span>BookRAG Pro</span>
+                </div>
+                <button id="sidebarToggle" class="sidebar-toggle">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
 
-        <!-- Alert Container -->
-        <div id="alertContainer"></div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Search & Discovery</h3>
+                    <a href="#" class="nav-item active" data-tab="search">
+                        <i class="fas fa-search"></i>
+                        <span>Search Books</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="rag">
+                        <i class="fas fa-robot"></i>
+                        <span>Ask AI</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="authors">
+                        <i class="fas fa-users"></i>
+                        <span>Browse Authors</span>
+                    </a>
+                </div>
 
-        <!-- Loading Overlay -->
-        <div id="loadingOverlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
-            <div style="background: white; padding: 2rem; border-radius: 15px; text-align: center;">
-                <div class="spinner"></div>
-                <div class="loading-text">Loading...</div>
+                <div class="nav-section" id="authorSection">
+                    <h3>Author Tools</h3>
+                    <a href="#" class="nav-item" data-tab="upload">
+                        <i class="fas fa-upload"></i>
+                        <span>Upload Books</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="my-books">
+                        <i class="fas fa-book"></i>
+                        <span>My Books</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <h3>Account</h3>
+                    <a href="#" class="nav-item" data-tab="profile">
+                        <i class="fas fa-user-circle"></i>
+                        <span>Profile Settings</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="subscriptions">
+                        <i class="fas fa-heart"></i>
+                        <span>My Subscriptions</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="analytics">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Usage Analytics</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="user-details">
+                        <div class="user-name" id="sidebarUserName">Loading...</div>
+                        <div class="user-role" id="sidebarUserRole">Loading...</div>
+                    </div>
+                </div>
+                <button class="logout-btn" id="sidebarLogoutBtn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
             </div>
         </div>
 
         <!-- Authentication Section -->
-        <div id="authSection">
-            <div class="card">
-                <div style="text-align: center; margin-bottom: 2rem;">
-                    <div class="nav-tabs">
-                        <button class="nav-tab active" onclick="showAuthTab('login')">Login</button>
-                        <button class="nav-tab" onclick="showAuthTab('register')">Register</button>
+        <div id="authSection" class="auth-container">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="auth-logo">
+                        <i class="fas fa-book-open"></i>
+                        <h1>BookRAG Pro</h1>
+                        <p>AI-Powered Book Search Platform</p>
                     </div>
                 </div>
 
+                <div class="auth-tabs">
+                    <button class="auth-tab active" onclick="showAuthTab('login')">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <button class="auth-tab" onclick="showAuthTab('register')">
+                        <i class="fas fa-user-plus"></i> Register
+                    </button>
+                </div>
+
                 <!-- Login Form -->
-                <div id="loginAuthTab">
-                    <h2><i class="fas fa-sign-in-alt"></i> Login to Your Account</h2>
+                <div id="loginAuthTab" class="auth-form">
+                    <h2>Welcome Back</h2>
+                    <p>Sign in to your account to continue</p>
                     <form id="loginForm" onsubmit="return false;">
                         <div class="form-group">
-                            <label for="loginEmail">Email Address</label>
+                            <label for="loginEmail">
+                                <i class="fas fa-envelope"></i> Email Address
+                            </label>
                             <input type="email" id="loginEmail" name="email" class="form-control" required>
                         </div>
                         <div class="form-group">
-                            <label for="loginPassword">Password</label>
+                            <label for="loginPassword">
+                                <i class="fas fa-lock"></i> Password
+                            </label>
                             <input type="password" id="loginPassword" name="password" class="form-control" required>
                         </div>
-                        <button type="submit" class="btn btn-primary" style="width: 100%;">
-                            <i class="fas fa-sign-in-alt"></i> Login
+                        <button type="submit" class="btn btn-primary btn-full">
+                            <i class="fas fa-sign-in-alt"></i> Sign In
                         </button>
                     </form>
                 </div>
 
                 <!-- Register Form -->
-                <div id="registerAuthTab" class="hidden">
-                    <h2><i class="fas fa-user-plus"></i> Create New Account</h2>
+                <div id="registerAuthTab" class="auth-form hidden">
+                    <h2>Create Account</h2>
+                    <p>Join our community of readers and authors</p>
                     <form id="registerForm" onsubmit="return false;">
                         <div class="form-group">
-                            <label for="registerEmail">Email Address</label>
+                            <label for="registerEmail">
+                                <i class="fas fa-envelope"></i> Email Address
+                            </label>
                             <input type="email" id="registerEmail" name="email" class="form-control" required>
                         </div>
                         <div class="form-group">
-                            <label for="registerUsername">Username</label>
+                            <label for="registerUsername">
+                                <i class="fas fa-user"></i> Username
+                            </label>
                             <input type="text" id="registerUsername" name="username" class="form-control" required>
                         </div>
                         <div class="form-group">
-                            <label for="registerPassword">Password</label>
+                            <label for="registerPassword">
+                                <i class="fas fa-lock"></i> Password
+                            </label>
                             <input type="password" id="registerPassword" name="password" class="form-control" required>
                         </div>
                         <div class="form-group">
-                            <label for="registerRole">Account Type</label>
+                            <label for="registerRole">
+                                <i class="fas fa-user-tag"></i> Account Type
+                            </label>
                             <select id="registerRole" name="role" class="form-control" required>
-                                <option value="user">Reader (Search & Read Books)</option>
-                                <option value="author">Author (Upload & Manage Books)</option>
+                                <option value="user">📚 Reader - Search & explore books</option>
+                                <option value="author">✍️ Author - Upload & manage books</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        <button type="submit" class="btn btn-primary btn-full">
                             <i class="fas fa-user-plus"></i> Create Account
                         </button>
                     </form>
@@ -87,147 +172,331 @@
             </div>
         </div>
 
-        <!-- Dashboard Section -->
-        <div id="dashboardSection" class="hidden">
-            <!-- Navigation -->
-            <div class="nav-tabs">
-                <button class="nav-tab active" data-tab="search">
-                    <i class="fas fa-search"></i> Search Books
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Top Header -->
+            <div class="top-header">
+                <button id="menuToggle" class="menu-toggle">
+                    <i class="fas fa-bars"></i>
                 </button>
-                <button class="nav-tab" data-tab="rag">
-                    <i class="fas fa-robot"></i> Ask AI
-                </button>
-                <button class="nav-tab" data-tab="authors">
-                    <i class="fas fa-users"></i> Authors
-                </button>
-                <button class="nav-tab" data-tab="upload">
-                    <i class="fas fa-upload"></i> Upload Book
-                </button>
-                <button class="btn btn-secondary" id="logoutBtn" style="margin-left: auto;">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </button>
-            </div>
-
-            <!-- Search Tab -->
-            <div id="searchTab" class="tab-content">
-                <div class="card">
-                    <h2><i class="fas fa-search"></i> Search Your Subscribed Books</h2>
-                    <p style="color: #718096; margin-bottom: 2rem;">Search through content from authors you've subscribed to using semantic search.</p>
-                    
-                    <form id="searchForm">
-                        <div class="search-container">
-                            <input type="text" name="query" class="search-input" placeholder="Search for concepts, topics, or specific information..." required>
-                            <button type="submit" class="search-btn">
-                                <i class="fas fa-search"></i>
-                            </button>
-                        </div>
-                    </form>
-
-                    <div id="searchResults"></div>
+                <div class="header-title">
+                    <h1 id="pageTitle">Search Books</h1>
+                    <p id="pageSubtitle">Find information across your subscribed authors' books</p>
                 </div>
-            </div>
-
-            <!-- RAG Tab -->
-            <div id="ragTab" class="tab-content hidden">
-                <div class="card">
-                    <h2><i class="fas fa-robot"></i> Ask AI Questions</h2>
-                    <p style="color: #718096; margin-bottom: 2rem;">Ask questions and get AI-generated answers based on your subscribed authors' books.</p>
-                    
-                    <form id="ragForm">
-                        <div class="form-group">
-                            <label for="ragQuery">Your Question</label>
-                            <div class="voice-input-container">
-                                <textarea name="ragQuery" id="ragQuery" class="form-control" rows="3" 
-                                        placeholder="Ask a question about the content in your subscribed books..." required></textarea>
-                                <div class="voice-controls">
-                                    <button type="button" id="voiceInputBtn" class="btn btn-voice" title="Click to speak your question (auto-submits after 3 seconds of silence). Allow microphone access when prompted.">
-                                        <i class="fas fa-microphone"></i>
-                                    </button>
-                                    <div id="voiceStatus" class="voice-status hidden">
-                                        <i class="fas fa-circle recording-indicator"></i>
-                                    </div>
-                                </div>
+                <div class="header-actions">
+                    <button class="header-btn" id="notificationsBtn">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-badge">3</span>
+                    </button>
+                    <div class="user-menu">
+                        <button class="user-menu-btn" id="userMenuBtn">
+                            <div class="user-avatar-small">
+                                <i class="fas fa-user"></i>
                             </div>
+                            <span id="headerUserName">User</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="user-dropdown" id="userDropdown">
+                            <a href="#" data-tab="profile">
+                                <i class="fas fa-user-circle"></i> Profile Settings
+                            </a>
+                            <a href="#" data-tab="analytics">
+                                <i class="fas fa-chart-line"></i> Usage Analytics
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" id="headerLogoutBtn">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
                         </div>
-                        <div style="display: flex; gap: 1rem; align-items: center;">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-robot"></i> Get AI Answer
-                            </button>
-                            <div class="speech-controls hidden" id="speechControls">
-                                <button type="button" id="stopSpeechBtn" class="btn btn-warning">
-                                    <i class="fas fa-volume-mute"></i> Stop Speaking
-                                </button>
-                                <div class="speech-status">
-                                    <i class="fas fa-volume-up speaking-indicator"></i>
-                                    <span>Speaking answer...</span>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-
-                    <div id="ragResults"></div>
-                </div>
-            </div>
-
-            <!-- Authors Tab -->
-            <div id="authorsTab" class="tab-content hidden">
-                <div class="card">
-                    <h2><i class="fas fa-users"></i> Browse & Subscribe to Authors</h2>
-                    <p style="color: #718096; margin-bottom: 2rem;">Discover authors and subscribe to access their book content.</p>
-                    
-                    <div id="authorsGrid" class="author-grid">
-                        <!-- Authors will be loaded here -->
                     </div>
                 </div>
             </div>
 
-            <!-- Upload Tab -->
-            <div id="uploadTab" class="tab-content hidden">
-                <div class="card">
-                    <h2><i class="fas fa-upload"></i> Upload Your Book</h2>
-                    <p style="color: #718096; margin-bottom: 2rem;">Upload PDF books to make them searchable and available to your subscribers.</p>
-                    
-                    <form id="bookUploadForm">
-                        <div class="form-group">
-                            <label for="bookTitle">Book Title</label>
-                            <input type="text" id="bookTitle" name="title" class="form-control" required>
+            <!-- Content Area -->
+            <div class="content-area">
+                <!-- Search Tab -->
+                <div id="searchTab" class="tab-content">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-search"></i> Search Your Library</h2>
+                            <p>Search through content from authors you've subscribed to using semantic search.</p>
                         </div>
-
-                        <div class="form-group">
-                            <label for="bookDescription">Book Description (Optional)</label>
-                            <textarea id="bookDescription" name="description" class="form-control" rows="3" 
-                                    placeholder="Brief description of the book content..."></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label>PDF File</label>
-                            <div id="fileUploadArea" class="file-input">
-                                <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #cbd5e0; margin-bottom: 1rem;"></i>
-                                <p>Drag & drop your PDF here or click to browse</p>
-                                <p style="color: #718096; font-size: 0.9rem;">Maximum file size: 100MB</p>
+                        
+                        <form id="searchForm" class="search-form">
+                            <div class="search-container">
+                                <input type="text" name="query" class="search-input" placeholder="Search for concepts, topics, or specific information..." required>
+                                <button type="submit" class="search-btn">
+                                    <i class="fas fa-search"></i>
+                                </button>
                             </div>
-                            <input type="file" id="fileInput" name="file" accept=".pdf" style="display: none;" required>
+                        </form>
+
+                        <div id="searchResults" class="results-container"></div>
+                    </div>
+                </div>
+
+                <!-- RAG Tab -->
+                <div id="ragTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-robot"></i> AI Assistant</h2>
+                            <p>Ask questions and get AI-generated answers based on your subscribed authors' books.</p>
+                        </div>
+                        
+                        <form id="ragForm" class="rag-form">
+                            <div class="form-group">
+                                <label for="ragQuery">Your Question</label>
+                                <div class="voice-input-container">
+                                    <textarea name="ragQuery" id="ragQuery" class="form-control" rows="3" 
+                                            placeholder="Ask a question about the content in your subscribed books..." required></textarea>
+                                    <div class="voice-controls">
+                                        <button type="button" id="voiceInputBtn" class="btn btn-voice" title="Click to speak your question (auto-submits after 3 seconds of silence). Allow microphone access when prompted.">
+                                            <i class="fas fa-microphone"></i>
+                                        </button>
+                                        <div id="voiceStatus" class="voice-status hidden">
+                                            <i class="fas fa-circle recording-indicator"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-robot"></i> Get AI Answer
+                                </button>
+                                <div class="speech-controls hidden" id="speechControls">
+                                    <button type="button" id="stopSpeechBtn" class="btn btn-warning">
+                                        <i class="fas fa-volume-mute"></i> Stop Speaking
+                                    </button>
+                                    <div class="speech-status">
+                                        <i class="fas fa-volume-up speaking-indicator"></i>
+                                        <span>Speaking answer...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div id="ragResults" class="results-container"></div>
+                    </div>
+                </div>
+
+                <!-- Authors Tab -->
+                <div id="authorsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-users"></i> Discover Authors</h2>
+                            <p>Browse and subscribe to authors to access their book content.</p>
+                        </div>
+                        
+                        <div id="authorsGrid" class="authors-grid">
+                            <!-- Authors will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload Tab -->
+                <div id="uploadTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-upload"></i> Upload Your Book</h2>
+                            <p>Upload PDF books to make them searchable and available to your subscribers.</p>
+                        </div>
+                        
+                        <form id="bookUploadForm" class="upload-form">
+                            <div class="form-group">
+                                <label for="bookTitle">Book Title</label>
+                                <input type="text" id="bookTitle" name="title" class="form-control" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="bookDescription">Book Description (Optional)</label>
+                                <textarea id="bookDescription" name="description" class="form-control" rows="3" 
+                                        placeholder="Brief description of the book content..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label>PDF File</label>
+                                <div id="fileUploadArea" class="file-input">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <p>Drag & drop your PDF here or click to browse</p>
+                                    <p class="file-hint">Maximum file size: 100MB</p>
+                                </div>
+                                <input type="file" id="fileInput" name="file" accept=".pdf" style="display: none;" required>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-full">
+                                <i class="fas fa-upload"></i> Upload & Process Book
+                            </button>
+                        </form>
+
+                        <div class="upload-info">
+                            <h4><i class="fas fa-info-circle"></i> Processing Information</h4>
+                            <ul>
+                                <li>Books are automatically linked to your author profile</li>
+                                <li>Books are processed using hybrid chunking (structural + semantic)</li>
+                                <li>Embeddings are generated using BGE-Base model (free)</li>
+                                <li>Processing time depends on book size (typically 2-10 minutes)</li>
+                                <li>You'll be notified when processing is complete</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile Tab -->
+                <div id="profileTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-user-circle"></i> Profile Settings</h2>
+                            <p>Manage your account information and preferences.</p>
+                        </div>
+                        
+                        <form id="profileForm" class="profile-form">
+                            <div class="profile-section">
+                                <h3>Personal Information</h3>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="profileUsername">Username</label>
+                                        <input type="text" id="profileUsername" name="username" class="form-control" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="profileEmail">Email Address</label>
+                                        <input type="email" id="profileEmail" name="email" class="form-control" required>
+                                    </div>
+                                </div>
+                                <div class="form-group" id="authorBioGroup">
+                                    <label for="profileBio">Author Bio</label>
+                                    <textarea id="profileBio" name="bio" class="form-control" rows="4" 
+                                            placeholder="Tell readers about yourself and your work..."></textarea>
+                                </div>
+                            </div>
+
+                            <div class="profile-section">
+                                <h3>Account Security</h3>
+                                <div class="form-group">
+                                    <label for="currentPassword">Current Password</label>
+                                    <input type="password" id="currentPassword" name="currentPassword" class="form-control">
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="newPassword">New Password</label>
+                                        <input type="password" id="newPassword" name="newPassword" class="form-control">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="confirmPassword">Confirm New Password</label>
+                                        <input type="password" id="confirmPassword" name="confirmPassword" class="form-control">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Save Changes
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="cancelProfileBtn">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Subscriptions Tab -->
+                <div id="subscriptionsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-heart"></i> My Subscriptions</h2>
+                            <p>Manage your author subscriptions and access to their content.</p>
+                        </div>
+                        
+                        <div id="subscriptionsList" class="subscriptions-list">
+                            <!-- Subscriptions will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics Tab -->
+                <div id="analyticsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-chart-line"></i> Usage Analytics</h2>
+                            <p>Track your platform usage and token consumption.</p>
+                        </div>
+                        
+                        <div class="analytics-grid">
+                            <div class="analytics-card">
+                                <div class="analytics-icon">
+                                    <i class="fas fa-search"></i>
+                                </div>
+                                <div class="analytics-content">
+                                    <h3 id="totalSearches">0</h3>
+                                    <p>Total Searches</p>
+                                </div>
+                            </div>
+                            <div class="analytics-card">
+                                <div class="analytics-icon">
+                                    <i class="fas fa-robot"></i>
+                                </div>
+                                <div class="analytics-content">
+                                    <h3 id="totalQuestions">0</h3>
+                                    <p>AI Questions</p>
+                                </div>
+                            </div>
+                            <div class="analytics-card">
+                                <div class="analytics-icon">
+                                    <i class="fas fa-coins"></i>
+                                </div>
+                                <div class="analytics-content">
+                                    <h3 id="totalTokens">0</h3>
+                                    <p>Tokens Used</p>
+                                </div>
+                            </div>
+                            <div class="analytics-card">
+                                <div class="analytics-icon">
+                                    <i class="fas fa-dollar-sign"></i>
+                                </div>
+                                <div class="analytics-content">
+                                    <h3 id="totalCost">$0.00</h3>
+                                    <p>Total Cost</p>
+                                </div>
+                            </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary" style="width: 100%;">
-                            <i class="fas fa-upload"></i> Upload & Process Book
-                        </button>
-                    </form>
+                        <div class="analytics-chart">
+                            <h3>Usage Over Time</h3>
+                            <div id="usageChart" class="chart-placeholder">
+                                <i class="fas fa-chart-line"></i>
+                                <p>Usage analytics will be displayed here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    <div style="margin-top: 2rem; padding: 1.5rem; background: #f7fafc; border-radius: 10px;">
-                        <h4 style="margin-bottom: 1rem;"><i class="fas fa-info-circle"></i> Processing Information</h4>
-                        <ul style="color: #4a5568; line-height: 1.6;">
-                            <li>Books are automatically linked to your author profile</li>
-                            <li>Books are processed using hybrid chunking (structural + semantic)</li>
-                            <li>Embeddings are generated using BGE-Base model (free)</li>
-                            <li>Processing time depends on book size (typically 2-10 minutes)</li>
-                            <li>You'll be notified when processing is complete</li>
-                        </ul>
+                <!-- My Books Tab (Author only) -->
+                <div id="my-booksTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-book"></i> My Books</h2>
+                            <p>Manage your uploaded books and track their processing status.</p>
+                        </div>
+                        
+                        <div id="myBooksList" class="books-list">
+                            <!-- Books will be loaded here -->
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden">
+        <div>
+            <div class="spinner"></div>
+            <div class="loading-text">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Alert Container -->
+    <div id="alertContainer"></div>
 
     <!-- PDF Viewer Modal -->
     <div id="pdfViewerModal" class="modal hidden">
@@ -260,11 +529,11 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=8"></script>
     <script>
         // Auth tab switching
         function showAuthTab(tab) {
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
             document.querySelector(`[onclick="showAuthTab('${tab}')"]`).classList.add('active');
             
             document.getElementById('loginAuthTab').classList.toggle('hidden', tab !== 'login');
