@@ -60,7 +60,8 @@ async def semantic_search(
         return rag_service.search_only(
             query=request.query,
             author_ids=author_ids,
-            limit=request.limit
+            limit=request.limit,
+            user_id=current_user.id
         )
     
     # Run search in thread pool
@@ -152,7 +153,8 @@ async def rag_query_stream(
             search_results = rag_service.search_only(
                 query=request.query,
                 author_ids=author_ids,
-                limit=max(request.max_chunks * 2, 16)
+                limit=max(request.max_chunks * 2, 16),
+                user_id=current_user.id
             )
             
             # Step 3: Send sources immediately
@@ -203,6 +205,23 @@ async def rag_query_stream(
                 
                 print(f"🚀 Streaming complete: {chunk_count} chunks")
                 total_time = time.time() - start_time
+                
+                # Log usage for streaming response
+                from app.services.token_tracker import token_tracker
+                # Estimate tokens: ~4 chars per token
+                prompt_tokens = len(str(messages)) // 4
+                completion_tokens = chunk_count * 3 # Rough estimate for small chunks
+                
+                token_tracker.log_usage(
+                    user_id=current_user.id,
+                    operation_type="rag_answer",
+                    query=request.query,
+                    model_name=rag_service.model_name,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    response_time=total_time
+                )
+                
                 yield f"data: {json.dumps({'type': 'complete', 'total_time': total_time})}\n\n"
                 
             else:
@@ -252,7 +271,8 @@ async def rag_query(
         return rag_service.generate_answer(
             query=request.query,
             author_ids=author_ids,
-            max_chunks=request.max_chunks
+            max_chunks=request.max_chunks,
+            user_id=current_user.id
         )
     
     # Run RAG in thread pool

@@ -11,6 +11,9 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import logging
 
+from app.db.database import SessionLocal
+from app.models.usage import UsageLog
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,7 +54,7 @@ class TokenTracker:
             }
         }
         
-        # Create logs directory if it doesn't exist
+        # Create logs directory if it doesn't exist (keeping for backward compatibility/backup)
         self.logs_dir = Path("logs")
         self.logs_dir.mkdir(exist_ok=True)
         
@@ -59,7 +62,7 @@ class TokenTracker:
         today = datetime.now().strftime("%Y-%m-%d")
         self.log_file = self.logs_dir / f"token_usage_{today}.jsonl"
         
-        logger.info(f"TokenTracker initialized. Logging to: {self.log_file}")
+        logger.info(f"TokenTracker initialized. Logging to database and {self.log_file}")
     
     def calculate_cost(self, model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
         """Calculate estimated cost for token usage."""
@@ -107,7 +110,31 @@ class TokenTracker:
             error_message=error_message
         )
         
-        # Write to log file
+        # Write to database
+        db = SessionLocal()
+        try:
+            db_log = UsageLog(
+                user_id=user_id,
+                operation_type=operation_type,
+                query=query[:200],
+                model_name=model_name,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                cost_estimate=cost_estimate,
+                response_time=response_time,
+                success=success,
+                error_message=error_message
+            )
+            db.add(db_log)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Failed to write token usage to database: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+        # Write to log file (keeping as backup)
         try:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(usage)) + "\n")
@@ -172,7 +199,7 @@ class TokenTracker:
         user_id: Optional[int] = None, 
         days: int = 7
     ) -> Dict[str, Any]:
-        """Get token usage statistics with granular classification."""
+        """Get token usage statistics from the database."""
         
         stats = {
             "total_tokens": 0,
@@ -191,81 +218,69 @@ class TokenTracker:
             "by_day": {}
         }
         
-        # Read recent log files
-        cutoff_date = datetime.now() - timedelta(days=days)
-        
-        for i in range(days):
-            date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-            log_file = self.logs_dir / f"token_usage_{date}.jsonl"
+        db = SessionLocal()
+        try:
+            cutoff_date = datetime.now() - timedelta(days=days)
+            query = db.query(UsageLog).filter(UsageLog.timestamp >= cutoff_date)
             
-            if log_file.exists():
-                try:
-                    with open(log_file, "r", encoding="utf-8") as f:
-                        for line in f:
-                            try:
-                                usage_data = json.loads(line.strip())
-                                usage_time = datetime.fromisoformat(usage_data["timestamp"])
-                                
-                                # Skip if outside date range or wrong user
-                                if usage_time < cutoff_date:
-                                    continue
-                                if user_id and usage_data["user_id"] != user_id:
-                                    continue
-                                
-                                # Update global stats
-                                stats["total_tokens"] += usage_data["total_tokens"]
-                                stats["total_cost"] += usage_data["cost_estimate"]
-                                stats["operations_count"] += 1
-                                
-                                # Granular breakdown
-                                op_type = usage_data["operation_type"]
-                                tokens = usage_data["total_tokens"]
-                                cost = usage_data["cost_estimate"]
-                                prompt_tokens = usage_data["prompt_tokens"]
-                                completion_tokens = usage_data["completion_tokens"]
-                                
-                                # Calculate prompt/completion costs
-                                model = usage_data["model_name"]
-                                costs_config = self.token_costs.get(model, {"input": 0, "output": 0})
-                                prompt_cost = (prompt_tokens / 1000) * costs_config.get("input", 0)
-                                completion_cost = (completion_tokens / 1000) * costs_config.get("output", 0)
+            if user_id:
+                query = query.filter(UsageLog.user_id == user_id)
+            
+            logs = query.all()
+            
+            for log in logs:
+                # Update global stats
+                stats["total_tokens"] += log.total_tokens
+                stats["total_cost"] += log.cost_estimate
+                stats["operations_count"] += 1
+                
+                # Granular breakdown
+                op_type = log.operation_type
+                tokens = log.total_tokens
+                cost = log.cost_estimate
+                prompt_tokens = log.prompt_tokens
+                completion_tokens = log.completion_tokens
+                
+                # Calculate prompt/completion costs
+                model = log.model_name
+                costs_config = self.token_costs.get(model, {"input": 0, "output": 0})
+                prompt_cost = (prompt_tokens / 1000) * costs_config.get("input", 0)
+                completion_cost = (completion_tokens / 1000) * costs_config.get("output", 0)
 
-                                if op_type == "book_batch_embedding":
-                                    stats["breakdown"]["book_processing"]["tokens"] += tokens
-                                    stats["breakdown"]["book_processing"]["cost"] += cost
-                                    stats["breakdown"]["book_processing"]["count"] += 1
-                                
-                                elif op_type == "rag_answer":
-                                    stats["breakdown"]["ai_conversations"]["tokens"] += tokens
-                                    stats["breakdown"]["ai_conversations"]["cost"] += cost
-                                    stats["breakdown"]["ai_conversations"]["count"] += 1
-                                    stats["breakdown"]["ai_conversations"]["prompt"]["tokens"] += prompt_tokens
-                                    stats["breakdown"]["ai_conversations"]["prompt"]["cost"] += prompt_cost
-                                    stats["breakdown"]["ai_conversations"]["answer"]["tokens"] += completion_tokens
-                                    stats["breakdown"]["ai_conversations"]["answer"]["cost"] += completion_cost
-                                
-                                elif op_type == "rag_embedding":
-                                    stats["breakdown"]["ai_conversations"]["embedding"]["tokens"] += tokens
-                                    stats["breakdown"]["ai_conversations"]["embedding"]["cost"] += cost
-                                    # We don't increment count here as it's part of the RAG flow
-                                
-                                elif op_type == "search_embedding":
-                                    stats["breakdown"]["search_activity"]["tokens"] += tokens
-                                    stats["breakdown"]["search_activity"]["cost"] += cost
-                                    stats["breakdown"]["search_activity"]["count"] += 1
-                                
-                                # By day
-                                day = usage_time.strftime("%Y-%m-%d")
-                                if day not in stats["by_day"]:
-                                    stats["by_day"][day] = {"tokens": 0, "cost": 0.0}
-                                stats["by_day"][day]["tokens"] += tokens
-                                stats["by_day"][day]["cost"] += cost
-                                
-                            except json.JSONDecodeError:
-                                continue
-                                
-                except Exception as e:
-                    logger.error(f"Error reading log file {log_file}: {e}")
+                if op_type == "book_batch_embedding":
+                    stats["breakdown"]["book_processing"]["tokens"] += tokens
+                    stats["breakdown"]["book_processing"]["cost"] += cost
+                    stats["breakdown"]["book_processing"]["count"] += 1
+                
+                elif op_type == "rag_answer":
+                    stats["breakdown"]["ai_conversations"]["tokens"] += tokens
+                    stats["breakdown"]["ai_conversations"]["cost"] += cost
+                    stats["breakdown"]["ai_conversations"]["count"] += 1
+                    stats["breakdown"]["ai_conversations"]["prompt"]["tokens"] += prompt_tokens
+                    stats["breakdown"]["ai_conversations"]["prompt"]["cost"] += prompt_cost
+                    stats["breakdown"]["ai_conversations"]["answer"]["tokens"] += completion_tokens
+                    stats["breakdown"]["ai_conversations"]["answer"]["cost"] += completion_cost
+                
+                elif op_type == "rag_embedding":
+                    stats["breakdown"]["ai_conversations"]["embedding"]["tokens"] += tokens
+                    stats["breakdown"]["ai_conversations"]["embedding"]["cost"] += cost
+                
+                elif op_type == "search_embedding":
+                    stats["breakdown"]["search_activity"]["tokens"] += tokens
+                    stats["breakdown"]["search_activity"]["cost"] += cost
+                    stats["breakdown"]["search_activity"]["count"] += 1
+                
+                # By day
+                day = log.timestamp.strftime("%Y-%m-%d")
+                if day not in stats["by_day"]:
+                    stats["by_day"][day] = {"tokens": 0, "cost": 0.0}
+                stats["by_day"][day]["tokens"] += tokens
+                stats["by_day"][day]["cost"] += cost
+                
+        except Exception as e:
+            logger.error(f"Error getting usage stats from database: {e}")
+        finally:
+            db.close()
         
         return stats
     
@@ -274,40 +289,39 @@ class TokenTracker:
         user_id: Optional[int] = None, 
         limit: int = 50
     ) -> List[Dict[str, Any]]:
-        """Get recent operations for debugging."""
+        """Get recent operations from the database."""
         
-        operations = []
-        
-        # Read today's log file
-        today = datetime.now().strftime("%Y-%m-%d")
-        log_file = self.logs_dir / f"token_usage_{today}.jsonl"
-        
-        if log_file.exists():
-            try:
-                with open(log_file, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                    
-                # Read from end of file (most recent first)
-                for line in reversed(lines[-limit:]):
-                    try:
-                        usage_data = json.loads(line.strip())
-                        
-                        # Filter by user if specified
-                        if user_id and usage_data["user_id"] != user_id:
-                            continue
-                            
-                        operations.append(usage_data)
-                        
-                        if len(operations) >= limit:
-                            break
-                            
-                    except json.JSONDecodeError:
-                        continue
-                        
-            except Exception as e:
-                logger.error(f"Error reading recent operations: {e}")
-        
-        return operations
+        db = SessionLocal()
+        try:
+            query = db.query(UsageLog).order_by(UsageLog.timestamp.desc())
+            
+            if user_id:
+                query = query.filter(UsageLog.user_id == user_id)
+            
+            logs = query.limit(limit).all()
+            
+            return [
+                {
+                    "timestamp": log.timestamp.isoformat(),
+                    "user_id": log.user_id,
+                    "operation_type": log.operation_type,
+                    "query": log.query,
+                    "model_name": log.model_name,
+                    "prompt_tokens": log.prompt_tokens,
+                    "completion_tokens": log.completion_tokens,
+                    "total_tokens": log.total_tokens,
+                    "cost_estimate": log.cost_estimate,
+                    "response_time": log.response_time,
+                    "success": log.success,
+                    "error_message": log.error_message
+                }
+                for log in logs
+            ]
+        except Exception as e:
+            logger.error(f"Error getting recent operations from database: {e}")
+            return []
+        finally:
+            db.close()
 
 # Global token tracker instance
 token_tracker = TokenTracker()

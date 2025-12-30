@@ -537,13 +537,17 @@ class BookRAGApp {
             const navAnalytics = document.getElementById('navAnalytics');
             const navSubscribedBooks = document.getElementById('navSubscribedBooks');
             
+            const dropdownAnalytics = document.getElementById('dropdownAnalytics');
+            
             if (this.currentUser.role === 'author') {
                 if (authorSection) authorSection.style.display = 'block';
-                if (navAnalytics) navAnalytics.style.display = 'flex';
+                if (navAnalytics) navAnalytics.style.display = 'none'; // Hidden as per request
+                if (dropdownAnalytics) dropdownAnalytics.style.display = 'none';
                 if (navSubscribedBooks) navSubscribedBooks.style.display = 'none';
             } else {
                 if (authorSection) authorSection.style.display = 'none';
-                if (navAnalytics) navAnalytics.style.display = 'none';
+                if (navAnalytics) navAnalytics.style.display = 'none'; // Also hidden for readers
+                if (dropdownAnalytics) dropdownAnalytics.style.display = 'none';
                 if (navSubscribedBooks) navSubscribedBooks.style.display = 'flex';
             }
         }
@@ -1686,17 +1690,17 @@ class BookRAGApp {
                  data-book-id="${source.book_id}" 
                  data-section-title="${source.section_title.replace(/"/g, '&quot;')}" 
                  data-page-number="${source.page_number}" 
-                 data-text="${encodeURIComponent(source.text)}"
-                 style="cursor: pointer;">
-                <div class="source-header">
-                    <span class="source-number">${index + 1}</span>
-                    <span class="source-title">${source.section_title}</span>
-                    <span class="source-page">Page ${source.page_number}</span>
-                    <span class="source-score">${(source.score * 100).toFixed(1)}%</span>
-                </div>
-                <div class="source-text">${this.truncateToFirstSentence(source.text)}</div>
-                <div class="source-actions">
-                    <i class="fas fa-external-link-alt"></i> Click to view in PDF
+                 data-text="${encodeURIComponent(source.text)}">
+                <div class="source-row">
+                    <div class="source-info">
+                        <span class="source-number">${index + 1}</span>
+                        <span class="source-title">${source.section_title}</span>
+                    </div>
+                    <div class="source-details">
+                        <span class="source-page">Page ${source.page_number}</span>
+                        <span class="source-score">${(source.score * 100).toFixed(1)}%</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
                 </div>
             </div>
         `).join('');
@@ -2080,23 +2084,17 @@ class BookRAGApp {
                                      data-book-id="${source.book_id}" 
                                      data-section-title="${source.section_title.replace(/"/g, '&quot;')}" 
                                      data-page-number="${source.page_number || 1}" 
-                                     data-text="${encodedText}"
-                                     style="cursor: pointer;">
-                                    <div class="source-header">
-                                        <strong>Source ${index + 1}:</strong> ${source.section_title}
-                                    </div>
-                                    ${source.text ? `
-                                        <div class="source-preview">
-                                            "${this.truncateToFirstSentence(source.text)}"
+                                     data-text="${encodedText}">
+                                    <div class="source-row">
+                                        <div class="source-info">
+                                            <i class="fas fa-file-alt"></i>
+                                            <span class="source-title">${source.section_title}</span>
                                         </div>
-                                    ` : ''}
-                                    <div class="source-meta">
-                                        <span class="source-score">Relevance: ${(source.score * 100).toFixed(1)}%</span>
-                                        <span class="source-type">Type: ${source.chunk_type}</span>
-                                        ${source.page_number ? `<span class="source-page">Page: ${source.page_number}</span>` : ''}
-                                        <button class="source-view-btn" data-source-index="${index}">
-                                            <i class="fas fa-external-link-alt"></i> View in PDF
-                                        </button>
+                                        <div class="source-details">
+                                            ${source.page_number ? `<span class="source-page">Page ${source.page_number}</span>` : ''}
+                                            <span class="source-score">${(source.score * 100).toFixed(0)}% Match</span>
+                                            <i class="fas fa-chevron-right"></i>
+                                        </div>
                                     </div>
                                 </div>
                             `;
@@ -2109,24 +2107,10 @@ class BookRAGApp {
         // Add event listeners for RAG source clicks
         console.log('🎧 Adding event listeners for RAG sources...');
         const sourceItems = container.querySelectorAll('.rag-source-item');
-        const sourceButtons = container.querySelectorAll('.source-view-btn');
-        
         sourceItems.forEach((item, index) => {
-            item.addEventListener('click', (e) => {
-                // Don't trigger if clicking on the button
-                if (e.target.closest('.source-view-btn')) return;
-                
+            item.addEventListener('click', () => {
                 console.log(`🖱️ Source ${index + 1} clicked via event listener!`);
                 this.handleSourceClick(item);
-            });
-        });
-        
-        sourceButtons.forEach((button, index) => {
-            button.addEventListener('click', (e) => {
-                e.stopPropagation();
-                console.log(`🖱️ Button ${index + 1} clicked via event listener!`);
-                const sourceItem = button.closest('.rag-source-item');
-                this.handleSourceClick(sourceItem);
             });
         });
     }

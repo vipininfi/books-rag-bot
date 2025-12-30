@@ -96,7 +96,7 @@ def get_book_pdf(
         Subscription.author_id == book.author_id
     ).first()
     
-    if not subscription and current_user.role != "author":
+    if not subscription and current_user.role not in ["author", "superadmin"]:
         raise HTTPException(status_code=403, detail="Access denied. Subscribe to this author to view their books.")
     
     # Check if file exists

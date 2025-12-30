@@ -52,6 +52,16 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/admin-login", response_class=HTMLResponse)
+async def admin_login(request: Request):
+    return templates.TemplateResponse("admin_login.html", {"request": request})
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

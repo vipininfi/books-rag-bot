@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookRAG Pro - Admin Login</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="admin-login-body">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">
+                    <i class="fas fa-user-shield"></i>
+                    <h1>Admin Portal</h1>
+                    <p>Superadmin Access Only</p>
+                </div>
+            </div>
+
+            <div class="auth-form">
+                <form id="adminLoginForm" onsubmit="return false;">
+                    <div class="form-group">
+                        <label for="adminEmail">
+                            <i class="fas fa-envelope"></i> Admin Email
+                        </label>
+                        <input type="email" id="adminEmail" name="email" class="form-control" required placeholder="admin@bookrag.pro">
+                    </div>
+                    <div class="form-group">
+                        <label for="adminPassword">
+                            <i class="fas fa-lock"></i> Password
+                        </label>
+                        <input type="password" id="adminPassword" name="password" class="form-control" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">
+                        <i class="fas fa-sign-in-alt"></i> Secure Login
+                    </button>
+                </form>
+            </div>
+            
+            <div class="auth-footer">
+                <a href="/"><i class="fas fa-arrow-left"></i> Back to Main Site</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="hidden">
+        <div>
+            <div class="spinner"></div>
+            <div class="loading-text">Authenticating...</div>
+        </div>
+    </div>
+
+    <div id="alertContainer"></div>
+
+    <script>
+        document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            loadingOverlay.classList.remove('hidden');
+            
+            try {
+                const formData = new FormData();
+                formData.append('username', email);
+                formData.append('password', password);
+                
+                const response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.user_role !== 'superadmin') {
+                        throw new Error('Access denied. Not a superadmin account.');
+                    }
+                    
+                    localStorage.setItem('token', data.access_token);
+                    localStorage.setItem('userRole', data.user_role);
+                    localStorage.setItem('userId', data.user_id);
+                    
+                    window.location.href = '/admin';
+                } else {
+                    throw new Error(data.detail || 'Login failed');
+                }
+            } catch (error) {
+                alert(error.message);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

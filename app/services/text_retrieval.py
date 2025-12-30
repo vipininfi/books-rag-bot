@@ -46,12 +46,14 @@ class TextRetrievalService:
                 print("⚠️ No chunk IDs found in search results")
                 return self._create_fallback_results(search_results)
             
-            # Batch query for all chunks
+            # Batch query for all chunks with book titles
             query = text("""
-                SELECT chunk_id, text, section_title, chunk_index, chunk_type, 
-                       token_count, page_number, book_id, author_id
-                FROM chunks 
-                WHERE chunk_id = ANY(:chunk_ids)
+                SELECT c.chunk_id, c.text, c.section_title, c.chunk_index, c.chunk_type, 
+                       c.token_count, c.page_number, c.book_id, c.author_id,
+                       b.title as book_title
+                FROM chunks c
+                JOIN books b ON c.book_id = b.id
+                WHERE c.chunk_id = ANY(:chunk_ids)
             """)
             
             result = db.execute(query, {"chunk_ids": chunk_ids})
@@ -78,7 +80,8 @@ class TextRetrievalService:
                         "chunk_index": db_chunk["chunk_index"],
                         "chunk_type": db_chunk["chunk_type"],
                         "token_count": db_chunk["token_count"],
-                        "page_number": db_chunk["page_number"]
+                        "page_number": db_chunk["page_number"],
+                        "book_title": db_chunk["book_title"]
                     }
                 else:
                     # Use text from search result (Pinecone metadata) if no database entry

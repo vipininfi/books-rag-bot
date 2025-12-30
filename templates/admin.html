@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookRAG Pro - Superadmin Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=7">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body class="admin-dashboard-body">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <div id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Admin Panel</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Management</h3>
+                    <a href="#" class="nav-item active" data-tab="users">
+                        <i class="fas fa-users"></i>
+                        <span>User Management</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="authors">
+                        <i class="fas fa-pen-nib"></i>
+                        <span>Authors</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="readers">
+                        <i class="fas fa-user-graduate"></i>
+                        <span>Readers</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="books">
+                        <i class="fas fa-book"></i>
+                        <span>Global Library</span>
+                    </a>
+                </div>
+
+                <div class="nav-section">
+                    <h3>System</h3>
+                    <a href="#" class="nav-item" data-tab="stats">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Global Stats</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="usageLogs">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        <span>Usage Logs</span>
+                    </a>
+                    <a href="#" class="nav-item" data-tab="settings">
+                        <i class="fas fa-cogs"></i>
+                        <span>System Settings</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="logout-btn" id="adminLogoutBtn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content sidebar-open">
+            <div class="top-header">
+                <div class="header-title">
+                    <h1 id="pageTitle">User Management</h1>
+                    <p id="pageSubtitle">Manage all users and their roles</p>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <!-- Users Tab -->
+                <div id="usersTab" class="tab-content">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-users"></i> All Users</h2>
+                            <button class="btn btn-primary btn-sm" onclick="adminApp.loadUsers()">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                        </div>
+                        <div class="table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Username</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <!-- Users will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Books Tab -->
+                <div id="booksTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-book"></i> Global Book Library</h2>
+                        </div>
+                        <div id="globalBooksList" class="books-list">
+                            <!-- Books will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authors Tab -->
+                <div id="authorsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-pen-nib"></i> Author Management</h2>
+                            <p>View all authors and their uploaded books</p>
+                        </div>
+                        <div class="table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Author Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="authorsTableBody">
+                                    <!-- Authors will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Readers Tab -->
+                <div id="readersTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-user-graduate"></i> Reader Management</h2>
+                            <p>View all readers and their activity</p>
+                        </div>
+                        <div class="table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Username</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="readersTableBody">
+                                    <!-- Readers will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Tab -->
+                <div id="statsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-chart-pie"></i> Global Statistics</h2>
+                            <p>System-wide usage and analytics</p>
+                        </div>
+                        <div id="globalStatsSummary" class="analytics-breakdown">
+                            <!-- Stats will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Usage Logs Tab -->
+                <div id="usageLogsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-file-invoice-dollar"></i> Advanced Usage Logs</h2>
+                            <div class="header-filters">
+                                <select id="usageFilterUser" class="form-control form-control-sm">
+                                    <option value="">All Users</option>
+                                </select>
+                                <select id="usageFilterOp" class="form-control form-control-sm">
+                                    <option value="">All Operations</option>
+                                    <option value="search_embedding">Search</option>
+                                    <option value="rag_answer">AI Answer</option>
+                                    <option value="rag_embedding">AI Embedding</option>
+                                    <option value="book_batch_embedding">Book Processing</option>
+                                </select>
+                                <select id="usageFilterDays" class="form-control form-control-sm">
+                                    <option value="1">Last 24h</option>
+                                    <option value="7" selected>Last 7 days</option>
+                                    <option value="30">Last 30 days</option>
+                                </select>
+                                <button class="btn btn-primary btn-sm" onclick="adminApp.loadAdvancedUsageStats()">
+                                    <i class="fas fa-filter"></i> Filter
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>User</th>
+                                        <th>Operation</th>
+                                        <th>Model</th>
+                                        <th>Tokens</th>
+                                        <th>Cost</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usageLogsTableBody">
+                                    <!-- Logs will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Author Details View (Hidden by default) -->
+                <div id="authorDetailsView" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <div class="header-with-back">
+                                <button class="btn btn-secondary btn-sm" onclick="adminApp.switchTab('authors')">
+                                    <i class="fas fa-arrow-left"></i> Back to Authors
+                                </button>
+                                <h2 id="detailAuthorName">Author Name</h2>
+                            </div>
+                        </div>
+                        <div class="author-details-grid">
+                            <div class="author-info-card">
+                                <h3>Author Information</h3>
+                                <div id="authorInfoContent"></div>
+                            </div>
+                            <div class="author-books-card">
+                                <h3>Uploaded Books</h3>
+                                <div id="authorBooksList" class="books-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reader Details View (Hidden by default) -->
+                <div id="readerDetailsView" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <div class="header-with-back">
+                                <button class="btn btn-secondary btn-sm" onclick="adminApp.switchTab('readers')">
+                                    <i class="fas fa-arrow-left"></i> Back to Readers
+                                </button>
+                                <h2 id="detailReaderName">Reader Name</h2>
+                            </div>
+                        </div>
+                        <div class="author-details-grid">
+                            <div class="author-info-card">
+                                <h3>Reader Information</h3>
+                                <div id="readerInfoContent"></div>
+                                <div class="mt-4">
+                                    <h3>Active Subscriptions</h3>
+                                    <div id="readerSubscriptionsList" class="subscriptions-list-admin"></div>
+                                </div>
+                            </div>
+                            <div class="author-books-card">
+                                <h3>Usage Statistics (Last 30 Days)</h3>
+                                <div id="readerUsageStats" class="usage-stats-mini"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="settingsTab" class="tab-content hidden">
+                    <div class="content-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-cogs"></i> System Settings</h2>
+                            <p>Configure platform-wide parameters and API keys</p>
+                        </div>
+                        <div class="settings-form-container">
+                            <form id="systemSettingsForm" onsubmit="return false;">
+                                <div class="settings-section">
+                                    <h3>API Configuration</h3>
+                                    <div class="form-group">
+                                        <label>OpenAI API Key</label>
+                                        <input type="password" name="OPENAI_API_KEY" class="form-control" placeholder="sk-...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Pinecone API Key</label>
+                                        <input type="password" name="PINECONE_API_KEY" class="form-control" placeholder="...">
+                                    </div>
+                                </div>
+                                <div class="settings-section">
+                                    <h3>Platform Limits</h3>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Max Upload Size (MB)</label>
+                                            <input type="number" name="MAX_FILE_SIZE_MB" class="form-control" value="100">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Max Books per Author</label>
+                                            <input type="number" name="MAX_BOOKS_PER_AUTHOR" class="form-control" value="10">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i> Save Settings
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="hidden">
+        <div>
+            <div class="spinner"></div>
+            <div class="loading-text">Loading...</div>
+        </div>
+    </div>
+
+    <div id="alertContainer"></div>
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
+
+    <!-- PDF Viewer Modal -->
+    <div id="pdfViewerModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="pdfViewerTitle">PDF Viewer</h3>
+                <button class="modal-close" onclick="adminApp.closePdfViewer()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="pdf-controls">
+                    <button id="prevPage" onclick="adminApp.prevPage()">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <span id="pageInfo">Page 1 of 1</span>
+                    <button id="nextPage" onclick="adminApp.nextPage()">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button id="zoomOut" onclick="adminApp.zoomOut()">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <span id="zoomLevel">100%</span>
+                    <button id="zoomIn" onclick="adminApp.zoomIn()">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                </div>
+                <div class="pdf-container">
+                    <canvas id="pdfCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

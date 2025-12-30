@@ -90,7 +90,7 @@ class RAGService:
         self, 
         query: str, 
         author_ids: List[int], 
-        max_chunks: int = 5,
+        max_chunks: int = 10,
         user_id: int = 0
     ) -> Dict[str, Any]:
         """Generate RAG answer using OpenAI GPT-4o mini with retrieved context and usage logging."""
@@ -127,7 +127,8 @@ class RAGService:
         context_chunks = []
         sources = []
         for i, result in enumerate(reranked_results):
-            section_header = f"--- Section: {result['section_title']} ---"
+            book_title = result.get("book_title", "Unknown Book")
+            section_header = f"--- Book: {book_title} | Section: {result['section_title']} ---"
             context_chunks.append(f"{section_header}\n{result['text']}")
             
             source_data = {
@@ -180,35 +181,20 @@ class RAGService:
     
     def _build_rag_messages(self, query: str, context: str) -> List[Dict[str, str]]:
         """Build the messages for OpenAI chat completion."""
-        system_prompt = """You are a book expert assistant that answers questions using ONLY the provided text excerpts from books. Your job is to find the specific answer in the given context and quote directly from it.
+        system_prompt = """You are a helpful book expert assistant. Your goal is to answer questions accurately using the provided text excerpts from books.
 
 CRITICAL RULES:
-1. **ONLY use information from the provided context** - Do not add general knowledge or assumptions
-2. **Quote directly from the text** when possible to support your answer
-3. **If the answer is in the context, find it and explain it clearly**
-4. **If the answer is NOT in the context, say so explicitly** - don't make up generic answers
-5. **Reference specific sections** when you find relevant information
+1. **Prioritize the provided context** - Use the excerpts as your primary source of truth.
+2. **Be helpful and informative** - If the context contains relevant information, use it to explain the answer clearly, even if you have to make reasonable connections.
+3. **Quote directly** - Use "quotes" from the text to support your points.
+4. **Identify the book** - Mention the book title when answering to provide context.
+5. **Handle missing info gracefully** - If the context truly doesn't contain anything relevant to the question, say: "Based on the provided excerpts, I couldn't find specific information about [topic]."
 
-ANSWER FORMAT:
-- Start with a direct answer if found in the context
-- Quote the relevant text passages
-- Explain what the text means in relation to the question
-- Use **bold** for key points and section headings
-- If no specific answer is found, clearly state: "The provided text does not contain information about [topic]"
-
-EXAMPLE GOOD ANSWER:
-**Direct Answer from the Text**
-
-According to the book, [specific answer based on context].
-
-The text states: "[exact quote from context]"
-
-This means [explanation of what the quote reveals about the question].
-
-EXAMPLE BAD ANSWER:
-- Making general assumptions not in the text
-- Saying "we can infer" when the text has the actual answer
-- Giving generic advice instead of book-specific content"""
+ANSWER STYLE:
+- Provide a clear, direct answer first.
+- Use **bold** for emphasis and section names.
+- Explain the significance of the information found in the context.
+- Keep the tone professional yet accessible."""
 
         user_prompt = f"""BOOK CONTEXT:
 {context}
