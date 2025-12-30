@@ -47,7 +47,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, methods=["GET", "HEAD"])
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
