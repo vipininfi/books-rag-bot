@@ -37,7 +37,7 @@ templates = Jinja2Templates(directory="templates")
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8001", "http://0.0.0.0:8001", "http://127.0.0.1:8001"],
+    allow_origins=["http://localhost:8001", "http://0.0.0.0:8001", "http://127.0.0.1:8001","https://books-rag-bot.onrender.com"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
