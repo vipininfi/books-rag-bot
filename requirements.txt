@@ -16,7 +16,7 @@ PyMuPDF
 pdfplumber
 
 # Vector Database
-pinecone-client
+pinecone
 
 # OpenAI & AI
 openai
